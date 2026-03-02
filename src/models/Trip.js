@@ -197,6 +197,16 @@ const tripSchema = new mongoose.Schema({
   actualEndTime: {
     type: Date
   },
+  distanceKm: {
+    type: Number,
+    default: null,
+    min: [0, 'Distance cannot be negative']
+  },
+  co2SavedKg: {
+    type: Number,
+    default: null,
+    min: [0, 'CO2 saved cannot be negative']
+  },
   // Legacy fields for backward compatibility with geo-based queries
   seatsAvailable: {
     type: Number,

@@ -13,6 +13,9 @@ import adminDriverRoutes from "./routes/adminDriver.routes.js";
 import tripRoutes from "./routes/tripRoutes.js";
 import rideRoutes from "./routes/rideRoutes.js";
 
+// Epic-3 Routes (Carbon calculation)
+import carbonRoutes from "./routes/carbon.routes.js";
+
 const app = express();
 
 // Global middlewares
@@ -30,6 +33,9 @@ app.use("/driver", driverRoutes);
 // Epic-2 Routes (Trip/Ride functionality)
 app.use("/api", tripRoutes);
 app.use("/api", rideRoutes);
+
+// Epic-3 Routes (Carbon calculation)
+app.use("/carbon", carbonRoutes);
 
 // Serve uploaded documents
 app.use("/uploads", express.static("uploads"));

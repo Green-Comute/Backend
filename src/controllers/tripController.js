@@ -1,6 +1,7 @@
 import Trip from '../models/Trip.js';
 import RideRequest from '../models/RideRequest.js';
 import { getIO } from '../config/socket.js';
+import { calculateCo2Saved } from '../services/carbon.service.js';
 
 /**
  * @fileoverview Trip Management Controller
@@ -123,7 +124,7 @@ export const createTrip = async (req, res) => {
       });
     }
 
-    const { vehicleType, totalSeats, scheduledTime, source, destination, sourceLocation, destinationLocation } = req.body;
+    const { vehicleType, totalSeats, scheduledTime, source, destination, sourceLocation, destinationLocation, distanceKm, conventionalEmissionFactor, sustainableEmissionFactor } = req.body;
 
     // Validate required fields
     if (!source || !destination || !scheduledTime || !vehicleType || !totalSeats) {
@@ -208,6 +209,29 @@ export const createTrip = async (req, res) => {
           type: 'LineString',
           coordinates: [sourceCoords, destCoords]
         };
+      }
+    }
+
+    // Calculate CO2 saved if distanceKm and emission factors are provided
+    if (distanceKm !== undefined && conventionalEmissionFactor !== undefined && sustainableEmissionFactor !== undefined) {
+      try {
+        const carbonResult = calculateCo2Saved({
+          distanceKm,
+          conventionalEmissionFactor,
+          sustainableEmissionFactor
+        });
+        tripData.distanceKm = carbonResult.distanceKm;
+        tripData.co2SavedKg = carbonResult.co2SavedKg;
+        console.log(`[tripController] CO2 saved for new trip: ${carbonResult.co2SavedKg} kg over ${carbonResult.distanceKm} km`);
+      } catch (carbonError) {
+        // Non-fatal: log and continue without CO2 data
+        console.error('[tripController] CO2 calculation failed, proceeding without it:', carbonError.message);
+      }
+    } else if (distanceKm !== undefined) {
+      // Store distance even if emission factors are absent
+      const parsedDist = Number(distanceKm);
+      if (!isNaN(parsedDist) && parsedDist > 0) {
+        tripData.distanceKm = parsedDist;
       }
     }
 
