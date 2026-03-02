@@ -1,6 +1,7 @@
 import RideRequest from '../models/RideRequest.js';
 import Trip from '../models/Trip.js';
 import { getIO } from '../config/socket.js';
+import { creditRidePoints } from '../services/points.service.js';
 
 /**
  * @fileoverview Ride Request Management Controller
@@ -287,7 +288,7 @@ export const approveRide = async (req, res) => {
         message: 'Your ride request has been approved',
         timestamp: new Date()
       });
-      
+
       // Emit trip seats update event for all users
       io.emit('trip-seats-updated', {
         tripId: rideRequest.tripId._id,
@@ -408,7 +409,7 @@ export const rejectRide = async (req, res) => {
         message: 'Your ride request has been rejected',
         timestamp: new Date()
       });
-      
+
       // Note: No seat update needed for rejection
     } catch (socketError) {
       console.error('Socket.io emit error:', socketError);
@@ -711,7 +712,7 @@ export const markAsPickedUp = async (req, res) => {
         message: 'You have been picked up',
         timestamp: new Date()
       });
-      
+
       // Also emit to trip room
       io.to(`trip:${rideRequest.tripId._id}`).emit('passengerPickup', {
         rideId: rideRequest._id,
@@ -838,6 +839,17 @@ export const markAsDroppedOff = async (req, res) => {
     rideRequest.droppedOffAt = new Date();
     await rideRequest.save();
 
+    // ── Epic-4: Credit points for passenger and driver (non-blocking) ──
+    creditRidePoints({
+      passengerId: rideRequest.passengerId._id,
+      driverId: rideRequest.tripId.driverId,
+      tripId: rideRequest.tripId._id,
+      rideRequestId: rideRequest._id,
+      organizationId: rideRequest.tripId.organizationId || req.user.organizationId,
+      scheduledTime: rideRequest.tripId.scheduledTime,
+      requestedAt: rideRequest.createdAt,
+    }).catch(err => console.error('Points credit failed (non-critical):', err.message));
+
     // Emit Socket.io event to passenger
     try {
       const io = getIO();
@@ -847,7 +859,7 @@ export const markAsDroppedOff = async (req, res) => {
         message: 'You have been dropped off',
         timestamp: new Date()
       });
-      
+
       // Also emit to trip room
       io.to(`trip:${rideRequest.tripId._id}`).emit('passengerDropoff', {
         rideId: rideRequest._id,
@@ -973,7 +985,7 @@ export const cancelRide = async (req, res) => {
       const io = getIO();
       // Ensure ObjectId is cast explicitly to string
       const driverStrId = trip.driverId._id ? trip.driverId._id.toString() : trip.driverId.toString();
-      
+
       io.to(`user-${driverStrId}`).emit('ride-cancelled-by-passenger', {
         rideId: rideRequest._id.toString(),
         tripId: trip._id.toString(),

@@ -96,6 +96,12 @@ const tripSchema = new mongoose.Schema({
     ref: 'User',
     required: [true, 'Driver ID is required']
   },
+  // Epic-4: needed for org-scoped points and leaderboards
+  organizationId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Organization',
+    index: true,
+  },
   vehicleType: {
     type: String,
     enum: {
@@ -109,7 +115,7 @@ const tripSchema = new mongoose.Schema({
     required: [true, 'Total seats is required'],
     min: [1, 'At least 1 seat must be available'],
     validate: {
-      validator: function(value) {
+      validator: function (value) {
         if (this.vehicleType === 'CAR') {
           return value <= 7;
         } else if (this.vehicleType === 'BIKE') {
@@ -117,7 +123,7 @@ const tripSchema = new mongoose.Schema({
         }
         return true;
       },
-      message: function() {
+      message: function () {
         if (this.vehicleType === 'CAR') {
           return 'CAR can have maximum 7 seats';
         } else if (this.vehicleType === 'BIKE') {
@@ -160,7 +166,7 @@ const tripSchema = new mongoose.Schema({
     type: Date,
     required: [true, 'Scheduled time is required'],
     validate: {
-      validator: function(value) {
+      validator: function (value) {
         const now = new Date();
         const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
         return value >= now && value <= sevenDaysFromNow;
@@ -200,13 +206,13 @@ const tripSchema = new mongoose.Schema({
   // Legacy fields for backward compatibility with geo-based queries
   seatsAvailable: {
     type: Number,
-    default: function() {
+    default: function () {
       return this.availableSeats;
     }
   },
   startTime: {
     type: Date,
-    default: function() {
+    default: function () {
       return this.scheduledTime;
     }
   },
@@ -218,7 +224,7 @@ const tripSchema = new mongoose.Schema({
     coordinates: {
       type: [[Number]],
       validate: {
-        validator: function(coords) {
+        validator: function (coords) {
           // Route must have at least 2 distinct vertices
           if (!coords || coords.length < 2) return false;
           // Check that not all coordinates are the same
@@ -233,7 +239,7 @@ const tripSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   }
-}, { 
+}, {
   timestamps: true,
   toJSON: { virtuals: true },
   toObject: { virtuals: true }

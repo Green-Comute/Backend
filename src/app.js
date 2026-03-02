@@ -13,6 +13,12 @@ import adminDriverRoutes from "./routes/adminDriver.routes.js";
 import tripRoutes from "./routes/tripRoutes.js";
 import rideRoutes from "./routes/rideRoutes.js";
 
+// Epic-4 Routes (Gamification & Rewards)
+import gamificationRoutes from "./routes/gamification.routes.js";
+import rewardsRoutes from "./routes/rewards.routes.js";
+import rewardsAdminRoutes from "./routes/rewardsAdmin.routes.js";
+import pointRulesRoutes from "./routes/pointRules.routes.js";
+
 const app = express();
 
 // Global middlewares
@@ -30,6 +36,12 @@ app.use("/driver", driverRoutes);
 // Epic-2 Routes (Trip/Ride functionality)
 app.use("/api", tripRoutes);
 app.use("/api", rideRoutes);
+
+// Epic-4 Routes (Gamification & Rewards)
+app.use("/api/gamification", gamificationRoutes);
+app.use("/api/rewards", rewardsRoutes);
+app.use("/org-admin/rewards", rewardsAdminRoutes);
+app.use("/platform/point-rules", pointRulesRoutes);
 
 // Serve uploaded documents
 app.use("/uploads", express.static("uploads"));

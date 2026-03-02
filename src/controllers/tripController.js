@@ -166,6 +166,7 @@ export const createTrip = async (req, res) => {
     // Prepare trip data
     const tripData = {
       driverId: req.user.userId,
+      organizationId: req.user.organizationId || null, // Epic-4
       vehicleType,
       totalSeats: parseInt(totalSeats),
       availableSeats: parseInt(totalSeats),
@@ -201,7 +202,7 @@ export const createTrip = async (req, res) => {
     if (tripData.sourceLocation && tripData.destinationLocation) {
       const sourceCoords = tripData.sourceLocation.coordinates.coordinates;
       const destCoords = tripData.destinationLocation.coordinates.coordinates;
-      
+
       // Only set route if coordinates are distinct
       if (sourceCoords[0] !== destCoords[0] || sourceCoords[1] !== destCoords[1]) {
         tripData.route = {
@@ -701,7 +702,7 @@ export const updateDriverLocation = async (req, res) => {
       type: 'Point',
       coordinates: [parseFloat(lng), parseFloat(lat)]
     };
-    
+
     await trip.save();
 
     res.status(200).json({
@@ -1125,6 +1126,47 @@ export const cancelTrip = async (req, res) => {
     res.status(400).json({
       success: false,
       message: error.message || 'Failed to cancel trip'
+    });
+  }
+};
+
+/**
+ * Get All Org Trips (Admin Only)
+ * 
+ * @route GET /api/trips/admin/all
+ */
+export const getAllOrgTrips = async (req, res) => {
+  try {
+    if (req.user.role !== "ORG_ADMIN" && req.user.role !== "PLATFORM_ADMIN") {
+      return res.status(403).json({ success: false, message: "Admin access required" });
+    }
+
+    let filter = {};
+    if (req.user.role === "ORG_ADMIN") {
+      filter.organizationId = req.user.organizationId;
+    }
+
+    const trips = await Trip.find(filter)
+      .populate('driverId', 'name email phone')
+      .populate({
+        path: 'rides',
+        populate: {
+          path: 'passengerId',
+          select: 'name email phone'
+        }
+      })
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      count: trips.length,
+      trips
+    });
+  } catch (error) {
+    console.error('Get all org trips error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch trips'
     });
   }
 };

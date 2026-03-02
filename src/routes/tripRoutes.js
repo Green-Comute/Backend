@@ -8,7 +8,8 @@ import {
   endTrip,
   getDriverTrips,
   updateDriverLocation,
-  getTripById
+  getTripById,
+  getAllOrgTrips
 } from '../controllers/tripController.js';
 import protect from '../middlewares/authMiddleware.js';
 import requireDriver from '../middlewares/driverMiddleware.js';
@@ -52,6 +53,11 @@ router.post('/trips', protect, requireDriver, createTrip);
  * @apiQuery {Number} [maxDistance=5000] Max distance in meters
  */
 router.get('/trips/search', protect, searchTrips);
+
+/**
+ * @api {get} /api/trips/admin/all Get All Trips (Admin)
+ */
+router.get('/trips/admin/all', protect, getAllOrgTrips);
 
 /**
  * @api {get} /api/trips/:id Get Trip Details
@@ -116,5 +122,6 @@ router.post('/trips/:id/end', protect, requireDriver, endTrip);
  * @apiBody {Number} lng Current longitude
  */
 router.post('/trips/:id/location', protect, requireDriver, updateDriverLocation);
+
 
 export default router;

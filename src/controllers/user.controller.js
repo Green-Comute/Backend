@@ -1,4 +1,9 @@
 import User from "../models/User.js";
+import Trip from "../models/Trip.js";
+import RideRequest from "../models/RideRequest.js";
+import PointLedger from "../models/PointLedger.js";
+import Redemption from "../models/Redemption.js";
+import UserPoints from "../models/UserPoints.js";
 
 /**
  * @fileoverview User Profile Management Controller
@@ -253,5 +258,63 @@ export const requestDriverAccess = async (req, res) => {
   } catch (err) {
     console.error("Driver request error:", err);
     res.status(500).json({ message: "Failed to request driver access" });
+  }
+};
+
+/**
+ * Get User Details for Admins
+ * 
+ * @description Retrieves a targeted user's complete history including their rides, points, and redemptions.
+ * Accessible to ORG_ADMIN (for their own org users) and PLATFORM_ADMIN.
+ * 
+ * @route GET /api/users/:id/admin-details
+ */
+export const getUserAdminDetails = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Authorization check
+    if (req.user.role !== "ORG_ADMIN" && req.user.role !== "PLATFORM_ADMIN") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+
+    const targetUser = await User.findById(id).select("-passwordHash -passwordResetToken");
+    if (!targetUser) return res.status(404).json({ message: "User not found" });
+
+    // Enforce ORG_ADMIN boundary
+    if (req.user.role === "ORG_ADMIN" && targetUser.organizationId.toString() !== req.user.organizationId.toString()) {
+      return res.status(403).json({ message: "Cannot view users outside your organization" });
+    }
+
+    // 1. Gamification Points wrapper
+    const pointsData = await UserPoints.findOne({ userId: id }) || { pointsBalance: 0, totalEarned: 0, currentTier: "Bronze" };
+
+    // 2. Rides Offered (Trips)
+    const tripsOffered = await Trip.find({ driverId: id }).sort({ createdAt: -1 });
+
+    // 3. Rides Taken
+    const ridesTaken = await RideRequest.find({ passengerId: id, status: { $in: ["ACCEPTED", "STARTED", "DROPPED_OFF", "CANCELLED", "APPROVED"] } })
+      .populate("tripId")
+      .sort({ createdAt: -1 });
+
+    // 4. Point Ledger
+    const pointHistory = await PointLedger.find({ userId: id }).sort({ createdAt: -1 });
+
+    // 5. Redemptions
+    const redemptions = await Redemption.find({ userId: id })
+      .populate("rewardItemId")
+      .sort({ createdAt: -1 });
+
+    res.json({
+      user: targetUser,
+      points: pointsData,
+      tripsOffered,
+      ridesTaken,
+      pointHistory,
+      redemptions
+    });
+  } catch (err) {
+    console.error("Get user admin details error:", err);
+    res.status(500).json({ message: "Failed to fetch user history" });
   }
 };

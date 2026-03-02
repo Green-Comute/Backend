@@ -164,6 +164,13 @@ const userSchema = new mongoose.Schema(
       trim: true,
     },
 
+    // Epic-4: Used for department-wise leaderboard (4.8)
+    department: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+
     emergencyContact: {
       name: {
         type: String,
@@ -201,24 +208,24 @@ const userSchema = new mongoose.Schema(
 
 
 
-driverReviewedBy: {
-  type: mongoose.Schema.Types.ObjectId,
-  ref: "User", // admin
-},
+    driverReviewedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User", // admin
+    },
 
-driverReviewedAt: {
-  type: Date,
-},
+    driverReviewedAt: {
+      type: Date,
+    },
 
-driverDocuments: {
-  license: { type: String },
-  rc: { type: String },
-},
+    driverDocuments: {
+      license: { type: String },
+      rc: { type: String },
+    },
 
 
-driverRejectionReason: {
-  type: String,
-},
+    driverRejectionReason: {
+      type: String,
+    },
 
 
 

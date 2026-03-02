@@ -4,6 +4,7 @@ import {
   getMyProfile,
   completeProfile,
   requestDriverAccess,
+  getUserAdminDetails,
 } from "../controllers/user.controller.js";
 
 /**
@@ -46,5 +47,12 @@ router.put("/complete-profile", requireAuth, completeProfile);
  * @apiNote Requires completed profile. Must upload documents after request.
  */
 router.post("/driver-intent", requireAuth, requestDriverAccess);
+
+/**
+ * @api {get} /api/users/:id/admin-details Get User Details (Admin)
+ * @apiDescription Admin endpoint to view a user's history
+ * @apiPermission ORG_ADMIN or PLATFORM_ADMIN
+ */
+router.get("/:id/admin-details", requireAuth, getUserAdminDetails);
 
 export default router;
