@@ -162,8 +162,9 @@ export const setupTrackingSocket = (io) => {
       }
 
       const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
-      socket.userId = decoded.id;
+      socket.userId = decoded.userId; // JWT payload uses 'userId', not 'id'
       socket.userRole = decoded.role;
+      console.log(`[Auth] Socket authenticated - userId: ${socket.userId}, role: ${socket.userRole}`);
       next();
     } catch {
       next(new Error('Invalid token'));
@@ -214,10 +215,18 @@ export const setupTrackingSocket = (io) => {
           return;
         }
 
-        if (trip.driverId.toString() !== socket.userId) {
+        const driverIdStr = trip.driverId.toString();
+        const socketUserIdStr = socket.userId.toString();
+        
+        console.log(`[Location Update] Driver check - Trip Driver: ${driverIdStr}, Socket User: ${socketUserIdStr}`);
+        
+        if (driverIdStr !== socketUserIdStr) {
+          console.error(`[Location Update] UNAUTHORIZED - User ${socketUserIdStr} is not driver ${driverIdStr}`);
           socket.emit('error', { message: 'Only the driver can update location' });
           return;
         }
+        
+        console.log(`[Location Update] ✓ Authorized - Updating location for trip ${tripId}`);
 
         // Update trip's current location
         trip.currentLocation = {
@@ -253,7 +262,7 @@ export const setupTrackingSocket = (io) => {
           timestamp: new Date()
         });
 
-        console.log(`Location updated for trip ${tripId}`);
+        console.log(`✓ Location broadcast for trip ${tripId} - ${location.lat}, ${location.lng}`);
       } catch (error) {
         console.error('Location update error:', error);
         socket.emit('error', { message: 'Failed to update location' });
