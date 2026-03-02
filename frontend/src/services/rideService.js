@@ -215,5 +215,26 @@ export const rideService = {
       method: 'POST',
     });
   },
+
+  /**
+   * Cancel Ride Request (Passenger)
+   *
+   * @description Passenger cancels their own PENDING or APPROVED ride request.
+   * Only allowed before the trip has started. Restores seat if request was APPROVED.
+   *
+   * @async
+   * @param {string} rideId - Ride request ID to cancel
+   *
+   * @returns {Promise<Object>} Updated ride request
+   *
+   * @example
+   * await rideService.cancelRide('64xyz789abc123');
+   * console.log('Ride cancelled successfully');
+   */
+  async cancelRide(rideId) {
+    return await apiRequest(`/rides/${rideId}/cancel`, {
+      method: 'POST',
+    });
+  },
 };
 

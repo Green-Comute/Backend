@@ -6,7 +6,8 @@ import {
   getRideRequestsForTrip,
   getPassengerRides,
   markAsPickedUp,
-  markAsDroppedOff
+  markAsDroppedOff,
+  cancelRide
 } from '../controllers/rideController.js';
 import protect from '../middlewares/authMiddleware.js';
 import requireDriver from '../middlewares/driverMiddleware.js';
@@ -81,5 +82,14 @@ router.post('/rides/:id/pickup', protect, requireDriver, markAsPickedUp);
  * @apiParam {String} id MongoDB ObjectId of ride request
  */
 router.post('/rides/:id/dropoff', protect, requireDriver, markAsDroppedOff);
+
+/**
+ * @api {post} /api/rides/:id/cancel Cancel Ride Request (Passenger)
+ * @apiDescription Passenger cancels their own PENDING or APPROVED ride request before trip starts
+ * @apiPermission authenticated (ride owner only)
+ * @apiHeader {String} Authorization Bearer JWT token
+ * @apiParam {String} id MongoDB ObjectId of ride request
+ */
+router.post('/rides/:id/cancel', protect, cancelRide);
 
 export default router;

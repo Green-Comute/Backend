@@ -31,10 +31,10 @@ const RideRequestCard = ({ rideRequest, onDecision }) => {
       <div className="flex justify-between items-start mb-4">
         <div>
           <h3 className="text-lg font-semibold text-gray-900">
-            {rideRequest.passenger?.name || 'Unknown Passenger'}
+            {rideRequest.passengerId?.name || 'Unknown Passenger'}
           </h3>
           <p className="text-sm text-gray-500 mt-1">
-            {rideRequest.passenger?.email}
+            {rideRequest.passengerId?.email}
           </p>
         </div>
         <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(rideRequest.status)}`}>
@@ -63,7 +63,7 @@ const RideRequestCard = ({ rideRequest, onDecision }) => {
               d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
             />
           </svg>
-          {rideRequest.trip?.source} → {rideRequest.trip?.destination}
+          {rideRequest.tripId?.source} → {rideRequest.tripId?.destination}
         </div>
 
         <div className="flex items-center text-sm text-gray-600">
@@ -111,11 +111,11 @@ RideRequestCard.propTypes = {
     _id: PropTypes.string.isRequired,
     status: PropTypes.string.isRequired,
     createdAt: PropTypes.string.isRequired,
-    passenger: PropTypes.shape({
+    passengerId: PropTypes.shape({
       name: PropTypes.string,
       email: PropTypes.string,
     }),
-    trip: PropTypes.shape({
+    tripId: PropTypes.shape({
       source: PropTypes.string,
       destination: PropTypes.string,
     }),

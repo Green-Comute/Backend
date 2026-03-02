@@ -873,3 +873,140 @@ export const markAsDroppedOff = async (req, res) => {
     });
   }
 };
+
+/**
+ * Cancel Ride Request (Passenger)
+ *
+ * @description Passenger cancels their own PENDING or APPROVED ride request.
+ * - PENDING cancellation: straight status update, no seat change.
+ * - APPROVED cancellation: atomically restores 1 seat on the trip, then notifies driver.
+ * - Blocked once the trip has STARTED or progressed further.
+ *
+ * @route POST /api/rides/:id/cancel
+ * @access Private (Authenticated users – the requesting passenger only)
+ *
+ * @param {string} req.params.id - MongoDB ObjectId of the ride request
+ *
+ * @returns {Object} 200 - Ride cancelled successfully
+ * @returns {Object} 400 - Cannot cancel (trip already started / invalid status)
+ * @returns {Object} 403 - Not authorised (not the passenger who made the request)
+ * @returns {Object} 404 - Ride request not found
+ *
+ * @realtime Socket.io Events Emitted:
+ * - Event: 'ride-cancelled-by-passenger'
+ *   - Room: `user-${driverId}`
+ *   - Payload: { rideId, tripId, passengerName, message, seatsRestored, timestamp }
+ * - Event: 'trip-seats-updated'
+ *   - Room: broadcast to all (only when APPROVED ride is cancelled)
+ *   - Payload: { tripId, availableSeats, timestamp }
+ */
+export const cancelRide = async (req, res) => {
+  try {
+    const rideRequestId = req.params.id;
+    const passengerId = req.user.userId;
+
+    // Find the ride request with trip and passenger details
+    const rideRequest = await RideRequest.findById(rideRequestId)
+      .populate('passengerId', 'name email')
+      .populate('tripId');
+
+    if (!rideRequest) {
+      return res.status(404).json({
+        success: false,
+        message: 'Ride request not found'
+      });
+    }
+
+    // Only the passenger who made the request can cancel it
+    if (rideRequest.passengerId._id.toString() !== passengerId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only the passenger who made this request can cancel it'
+      });
+    }
+
+    const trip = rideRequest.tripId;
+
+    // Cannot cancel after trip has started
+    if (trip.status === 'STARTED' || trip.status === 'IN_PROGRESS') {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot cancel a ride after the trip has started'
+      });
+    }
+
+    if (trip.status === 'COMPLETED' || trip.status === 'CANCELLED') {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot cancel a ride for a trip that is ${trip.status.toLowerCase()}`
+      });
+    }
+
+    // Can only cancel PENDING or APPROVED rides
+    if (rideRequest.status !== 'PENDING' && rideRequest.status !== 'APPROVED') {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot cancel a ride request with status ${rideRequest.status}`
+      });
+    }
+
+    const wasApproved = rideRequest.status === 'APPROVED';
+
+    // Update ride request to REJECTED (used as "passenger cancelled")
+    rideRequest.status = 'REJECTED';
+    await rideRequest.save();
+
+    let updatedAvailableSeats = trip.availableSeats;
+
+    // Restore the seat if the request was already approved
+    if (wasApproved) {
+      const updatedTrip = await Trip.findByIdAndUpdate(
+        trip._id,
+        { $inc: { availableSeats: 1 } },
+        { new: true }
+      );
+      updatedAvailableSeats = updatedTrip.availableSeats;
+    }
+
+    // Notify the driver in real-time
+    try {
+      const io = getIO();
+      // Ensure ObjectId is cast explicitly to string
+      const driverStrId = trip.driverId._id ? trip.driverId._id.toString() : trip.driverId.toString();
+      
+      io.to(`user-${driverStrId}`).emit('ride-cancelled-by-passenger', {
+        rideId: rideRequest._id.toString(),
+        tripId: trip._id.toString(),
+        passengerName: rideRequest.passengerId.name,
+        message: `${rideRequest.passengerId.name} has cancelled their ride request`,
+        seatsRestored: wasApproved,
+        timestamp: new Date()
+      });
+
+      // Broadcast seat update to all if a seat was freed
+      if (wasApproved) {
+        io.emit('trip-seats-updated', {
+          tripId: trip._id.toString(),
+          availableSeats: updatedAvailableSeats,
+          timestamp: new Date()
+        });
+      }
+    } catch (socketError) {
+      console.error('Socket.io emit error in cancelRide:', socketError);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Ride cancelled successfully',
+      data: rideRequest,
+      seatRestored: wasApproved
+    });
+
+  } catch (error) {
+    console.error('Cancel ride error:', error);
+    res.status(400).json({
+      success: false,
+      message: error.message || 'Failed to cancel ride'
+    });
+  }
+};

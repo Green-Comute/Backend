@@ -13,6 +13,7 @@ const EmployeeDashboard = () => {
   const [passengerRides, setPassengerRides] = useState([]);
   const [ridesLoading, setRidesLoading] = useState(true);
   const [passkeyStatus, setPasskeyStatus] = useState(""); // feedback for passkey UI
+  const [tripNotification, setTripNotification] = useState("");
 
   // 🔹 Fetch logged-in user
   useEffect(() => {
@@ -87,6 +88,15 @@ const EmployeeDashboard = () => {
         .catch(err => console.error('Failed to refresh rides:', err));
     });
 
+    socket.on('trip-cancelled', (data) => {
+      console.log('Trip cancelled log:', data);
+      setTripNotification(data.message || 'A trip you were on has been cancelled.');
+      setTimeout(() => setTripNotification(""), 6000);
+      rideService.getPassengerRides()
+        .then(result => setPassengerRides(result.rides || []))
+        .catch(err => console.error('Failed to refresh rides:', err));
+    });
+
     return () => {
       socket.disconnect();
     };
@@ -148,6 +158,16 @@ const EmployeeDashboard = () => {
 
   return (
     <div className="p-8">
+      {tripNotification && (
+        <div className="mb-6 p-4 bg-amber-50 border border-amber-300 rounded-lg flex items-start space-x-3">
+          <span className="text-amber-500 text-xl">ℹ️</span>
+          <div>
+            <p className="font-semibold text-amber-800">Trip Update</p>
+            <p className="text-amber-700 text-sm mt-1">{tripNotification}</p>
+          </div>
+        </div>
+      )}
+
       <h1 className="text-3xl font-bold text-stone-900 mb-2">
         Welcome to GreenCommute 🌱
       </h1>
@@ -191,8 +211,8 @@ const EmployeeDashboard = () => {
               <div className="flex justify-between items-center">
                 <span className="text-stone-600">Profile:</span>
                 <span className={`text-xs px-2 py-1 rounded ${user.profileCompleted
-                    ? "bg-green-100 text-green-700"
-                    : "bg-amber-100 text-amber-700"
+                  ? "bg-green-100 text-green-700"
+                  : "bg-amber-100 text-amber-700"
                   }`}>
                   {user.profileCompleted ? "Complete" : "Incomplete"}
                 </span>
@@ -220,10 +240,10 @@ const EmployeeDashboard = () => {
               <div className="flex justify-between items-center">
                 <span className="text-stone-600">Driver Status:</span>
                 <span className={`text-xs px-2 py-1 rounded ${user.driverStatus === "APPROVED"
-                    ? "bg-green-100 text-green-700"
-                    : user.driverStatus === "PENDING"
-                      ? "bg-amber-100 text-amber-700"
-                      : "bg-gray-100 text-gray-700"
+                  ? "bg-green-100 text-green-700"
+                  : user.driverStatus === "PENDING"
+                    ? "bg-amber-100 text-amber-700"
+                    : "bg-gray-100 text-gray-700"
                   }`}>
                   {user.driverStatus || "N/A"}
                 </span>
@@ -386,10 +406,10 @@ const EmployeeDashboard = () => {
               >
                 <div className="flex justify-between items-start mb-3">
                   <span className={`px-3 py-1 rounded-full text-xs font-semibold ${ride.status === "APPROVED"
-                      ? "bg-green-100 text-green-700"
-                      : ride.status === "REJECTED"
-                        ? "bg-red-100 text-red-700"
-                        : "bg-amber-100 text-amber-700"
+                    ? "bg-green-100 text-green-700"
+                    : ride.status === "REJECTED"
+                      ? "bg-red-100 text-red-700"
+                      : "bg-amber-100 text-amber-700"
                     }`}>
                     {ride.status}
                   </span>
@@ -402,13 +422,13 @@ const EmployeeDashboard = () => {
                   <div>
                     <span className="text-stone-600">From:</span>
                     <p className="font-medium text-stone-900">
-                      {ride.tripId?.source?.name || "Unknown"}
+                      {ride.tripId?.source || "Unknown"}
                     </p>
                   </div>
                   <div>
                     <span className="text-stone-600">To:</span>
                     <p className="font-medium text-stone-900">
-                      {ride.tripId?.destination?.name || "Unknown"}
+                      {ride.tripId?.destination || "Unknown"}
                     </p>
                   </div>
                   <div>

@@ -13,6 +13,7 @@ const CreateTrip = () => {
   const [formData, setFormData] = useState({
     source: '',
     destination: '',
+    scheduledDate: '',
     scheduledTime: '',
     vehicleType: 'CAR',
     totalSeats: 4,
@@ -25,17 +26,17 @@ const CreateTrip = () => {
   const getMaxDate = () => {
     const date = new Date();
     date.setDate(date.getDate() + 7);
-    return date.toISOString().slice(0, 16);
+    return date.toISOString().split('T')[0];
   };
 
   // Get min date (now)
   const getMinDate = () => {
-    return new Date().toISOString().slice(0, 16);
+    return new Date().toISOString().split('T')[0];
   };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    
+
     // Auto-adjust seats based on vehicle type
     if (name === 'vehicleType') {
       setFormData({
@@ -55,7 +56,7 @@ const CreateTrip = () => {
     setSourceLocation(locationData);
     setFormData({
       ...formData,
-      source: locationData.address || locationData
+      source: locationData?.address ?? locationData
     });
   };
 
@@ -63,7 +64,7 @@ const CreateTrip = () => {
     setDestinationLocation(locationData);
     setFormData({
       ...formData,
-      destination: locationData.address || locationData
+      destination: locationData?.address ?? locationData
     });
   };
 
@@ -75,11 +76,13 @@ const CreateTrip = () => {
 
     try {
       // Validate form data
-      if (!formData.source || !formData.destination || !formData.scheduledTime) {
+      if (!formData.source || !formData.destination || !formData.scheduledDate || !formData.scheduledTime) {
         setError('Please fill in all required fields');
         setLoading(false);
         return;
       }
+
+      const scheduledDateTime = `${formData.scheduledDate}T${formData.scheduledTime}`;
 
       // Validate seats for CAR
       if (formData.vehicleType === 'CAR' && (formData.totalSeats < 1 || formData.totalSeats > 7)) {
@@ -92,7 +95,7 @@ const CreateTrip = () => {
       await tripService.createTrip({
         source: formData.source,
         destination: formData.destination,
-        scheduledTime: formData.scheduledTime,
+        scheduledTime: scheduledDateTime,
         vehicleType: formData.vehicleType,
         totalSeats: parseInt(formData.totalSeats),
         sourceLocation: sourceLocation?.lat && sourceLocation?.lng ? {
@@ -108,11 +111,12 @@ const CreateTrip = () => {
       });
 
       setSuccess('Trip created successfully!');
-      
+
       // Reset form
       setFormData({
         source: '',
         destination: '',
+        scheduledDate: '',
         scheduledTime: '',
         vehicleType: 'CAR',
         totalSeats: 4,
@@ -199,21 +203,36 @@ const CreateTrip = () => {
               </div>
             )}
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Scheduled Date & Time
-              </label>
-              <input
-                type="datetime-local"
-                name="scheduledTime"
-                value={formData.scheduledTime}
-                onChange={handleChange}
-                min={getMinDate()}
-                max={getMaxDate()}
-                required
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-              <p className="text-xs text-gray-500 mt-1">Maximum 7 days from now</p>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Scheduled Date
+                </label>
+                <input
+                  type="date"
+                  name="scheduledDate"
+                  value={formData.scheduledDate}
+                  onChange={handleChange}
+                  min={getMinDate()}
+                  max={getMaxDate()}
+                  required
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent cursor-pointer"
+                />
+                <p className="text-xs text-gray-500 mt-1">Max 7 days from now</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Scheduled Time
+                </label>
+                <input
+                  type="time"
+                  name="scheduledTime"
+                  value={formData.scheduledTime}
+                  onChange={handleChange}
+                  required
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent cursor-pointer"
+                />
+              </div>
             </div>
 
             <div>

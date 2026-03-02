@@ -1,4 +1,5 @@
 import Trip from '../models/Trip.js';
+import RideRequest from '../models/RideRequest.js';
 import { getIO } from '../config/socket.js';
 
 /**
@@ -1051,17 +1052,72 @@ export const cancelTrip = async (req, res) => {
     if (trip.status === 'COMPLETED' || trip.status === 'CANCELLED') {
       return res.status(400).json({
         success: false,
-        message: `Cannot cancel trip with status ${trip.status}`
+        message: `Cannot cancel a trip that is already ${trip.status.toLowerCase()}`
       });
     }
 
+    // Block cancellation once the trip has started
+    if (trip.status === 'STARTED' || trip.status === 'IN_PROGRESS') {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot cancel a trip that has already started'
+      });
+    }
+
+    // Find all affected ride requests (APPROVED and PENDING)
+    const affectedRides = await RideRequest.find({
+      tripId: trip._id,
+      status: { $in: ['APPROVED', 'PENDING'] }
+    }).populate('passengerId', 'name email');
+
+    // Restore available seats atomically for APPROVED rides
+    const approvedRidesCount = affectedRides.filter(r => r.status === 'APPROVED').length;
+    if (approvedRidesCount > 0) {
+      await Trip.findByIdAndUpdate(trip._id, {
+        $inc: { availableSeats: approvedRidesCount }
+      });
+    }
+
+    // Auto-reject any pending requests since the trip is gone
+    await RideRequest.updateMany(
+      { tripId: trip._id, status: 'PENDING' },
+      { $set: { status: 'REJECTED' } }
+    );
+
+    // Mark trip as cancelled
     trip.status = 'CANCELLED';
     await trip.save();
+
+    // Notify every affected passenger in real-time
+    try {
+      const io = getIO();
+      for (const ride of affectedRides) {
+        io.to(`user-${ride.passengerId._id.toString()}`).emit('trip-cancelled', {
+          tripId: trip._id.toString(),
+          rideId: ride._id.toString(),
+          message: `Your requested trip from ${trip.source} to ${trip.destination} has been cancelled by the driver`,
+          cancelledBy: 'driver',
+          timestamp: new Date()
+        });
+      }
+      // Also broadcast a general trip status update
+      io.emit('trip-seats-updated', {
+        tripId: trip._id.toString(),
+        availableSeats: trip.totalSeats,
+        status: 'CANCELLED',
+        timestamp: new Date()
+      });
+    } catch (socketError) {
+      console.error('Socket.io emit error in cancelTrip:', socketError);
+    }
+
+    const updatedTrip = await Trip.findById(trip._id).populate('driverId', 'name email');
 
     res.status(200).json({
       success: true,
       message: 'Trip cancelled successfully',
-      trip
+      trip: updatedTrip,
+      passengersNotified: affectedRides.length
     });
 
   } catch (error) {

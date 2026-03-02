@@ -15,6 +15,9 @@ const PassengerTripTracking = () => {
   const [error, setError] = useState('');
   const [eta, setEta] = useState(null);
   const [etaLastUpdated, setEtaLastUpdated] = useState(null);
+  const [cancelLoading, setCancelLoading] = useState(false);
+  const [cancelSuccess, setCancelSuccess] = useState(false);
+  const [tripCancelledAlert, setTripCancelledAlert] = useState(null);
   const tripRef = useRef(null);
 
   // Keep tripRef in sync so socket handler always has fresh trip data
@@ -87,6 +90,15 @@ const PassengerTripTracking = () => {
       }
     });
 
+    // Listen for driver-cancelled trip notifications
+    newSocket.on('trip-cancelled', (data) => {
+      if (data.tripId === ride.tripId._id || data.rideId === rideId) {
+        setTrip(prev => prev ? { ...prev, status: 'CANCELLED' } : prev);
+        setTripCancelledAlert(data.message || 'Your trip has been cancelled by the driver');
+        setEta(null);
+      }
+    });
+
     return () => {
       if (newSocket) {
         newSocket.emit('leaveTrip', ride.tripId._id);
@@ -118,6 +130,25 @@ const PassengerTripTracking = () => {
       setError(err.message || 'Failed to load ride details');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCancelRide = async () => {
+    if (!window.confirm('Are you sure you want to cancel your ride? This action cannot be undone.')) {
+      return;
+    }
+    try {
+      setCancelLoading(true);
+      setError('');
+      await rideService.cancelRide(rideId);
+      setCancelSuccess(true);
+      // Update local ride state
+      setRide(prev => ({ ...prev, status: 'REJECTED' }));
+      setTimeout(() => navigate('/dashboard'), 2500);
+    } catch (err) {
+      setError(err.message || 'Failed to cancel ride');
+    } finally {
+      setCancelLoading(false);
     }
   };
 
@@ -232,6 +263,29 @@ const PassengerTripTracking = () => {
             ← Back
           </button>
         </div>
+
+        {/* Driver-cancelled alert banner */}
+        {tripCancelledAlert && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-300 rounded-lg flex items-start space-x-3">
+            <span className="text-red-500 text-xl">🚫</span>
+            <div>
+              <p className="font-semibold text-red-700">Trip Cancelled by Driver</p>
+              <p className="text-red-600 text-sm mt-1">{tripCancelledAlert}</p>
+              <p className="text-red-500 text-xs mt-1">Redirecting to dashboard shortly…</p>
+            </div>
+          </div>
+        )}
+
+        {/* Passenger cancel success banner */}
+        {cancelSuccess && (
+          <div className="mb-6 p-4 bg-green-50 border border-green-300 rounded-lg flex items-center space-x-3">
+            <span className="text-green-500 text-xl">✓</span>
+            <div>
+              <p className="font-semibold text-green-700">Ride Cancelled Successfully</p>
+              <p className="text-green-600 text-sm">Redirecting to dashboard…</p>
+            </div>
+          </div>
+        )}
 
         {/* Status Card */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
@@ -363,6 +417,34 @@ const PassengerTripTracking = () => {
         {trip.status === 'STARTED' && (
           <LiveTrackingMap trip={trip} userRole="passenger" />
         )}
+
+        {/* Passenger Cancel Ride – only when trip is SCHEDULED and ride is cancellable */}
+        {trip.status === 'SCHEDULED' &&
+          (ride.status === 'PENDING' || ride.status === 'APPROVED') &&
+          !cancelSuccess && (
+            <div className="bg-white rounded-lg shadow-md p-6 mt-6 border border-red-100">
+              <h3 className="font-semibold text-gray-900 mb-2">Need to cancel?</h3>
+              <p className="text-sm text-gray-600 mb-4">
+                You can cancel your ride request while the trip has not yet started.
+                {ride.status === 'APPROVED' && (
+                  <span className="ml-1 text-amber-600 font-medium">
+                    Your approved seat will be freed for other passengers.
+                  </span>
+                )}
+              </p>
+              {error && (
+                <p className="text-sm text-red-600 mb-3">{error}</p>
+              )}
+              <button
+                id="passenger-cancel-ride-btn"
+                onClick={handleCancelRide}
+                disabled={cancelLoading}
+                className="px-5 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 active:bg-red-800 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed font-medium text-sm"
+              >
+                {cancelLoading ? 'Cancelling…' : '✕ Cancel My Ride'}
+              </button>
+            </div>
+          )}
 
         {/* Timeline for pickup status */}
         {trip.status === 'STARTED' && (

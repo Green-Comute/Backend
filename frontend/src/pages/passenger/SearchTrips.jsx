@@ -12,10 +12,10 @@ const SearchTrips = () => {
     destination: '',
     vehicleType: '',
   });
-  
+
   const [sourceLocation, setSourceLocation] = useState(null);
   const [destinationLocation, setDestinationLocation] = useState(null);
-  
+
   const [trips, setTrips] = useState([]);
   const [requestedTripIds, setRequestedTripIds] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -65,9 +65,9 @@ const SearchTrips = () => {
     socket.on('trip-seats-updated', (data) => {
       console.log('Trip seats updated:', data);
       // Update the specific trip in the list
-      setTrips(prevTrips => 
-        prevTrips.map(trip => 
-          trip._id === data.tripId 
+      setTrips(prevTrips =>
+        prevTrips.map(trip =>
+          trip._id === data.tripId
             ? { ...trip, availableSeats: data.availableSeats }
             : trip
         )
@@ -92,7 +92,7 @@ const SearchTrips = () => {
 
   const handleSearch = async (e) => {
     e.preventDefault();
-    
+
     if (!searchParams.source || !searchParams.destination) {
       setError('Please enter both source and destination');
       return;
@@ -114,7 +114,7 @@ const SearchTrips = () => {
         searchData.sourceLat = sourceLocation.lat;
         searchData.sourceLng = sourceLocation.lng;
       }
-      
+
       if (destinationLocation?.lat && destinationLocation?.lng) {
         searchData.destLat = destinationLocation.lat;
         searchData.destLng = destinationLocation.lng;
@@ -122,7 +122,7 @@ const SearchTrips = () => {
 
       const data = await tripService.searchTrips(searchData);
       setTrips(data.trips || []);
-      
+
       if (!data.trips || data.trips.length === 0) {
         setError('No trips found matching your search criteria');
       }
@@ -137,15 +137,15 @@ const SearchTrips = () => {
     try {
       setError('');
       setSuccessMessage('');
-      
+
       await rideService.requestRide(tripId);
-      
+
       setSuccessMessage('Ride requested successfully! The driver will review your request.');
       setRequestedTripIds([...requestedTripIds, tripId]);
-      
+
       // Refresh passenger rides list
       fetchPassengerRides();
-      
+
       // Clear success message after 5 seconds
       setTimeout(() => setSuccessMessage(''), 5000);
     } catch (err) {
@@ -157,7 +157,7 @@ const SearchTrips = () => {
     setSourceLocation(locationData);
     setSearchParams({
       ...searchParams,
-      source: locationData.address || locationData
+      source: locationData?.address ?? locationData
     });
   };
 
@@ -165,7 +165,7 @@ const SearchTrips = () => {
     setDestinationLocation(locationData);
     setSearchParams({
       ...searchParams,
-      destination: locationData.address || locationData
+      destination: locationData?.address ?? locationData
     });
   };
 
@@ -214,22 +214,20 @@ const SearchTrips = () => {
                 <button
                   type="button"
                   onClick={() => handleVehicleTypeFilter('CAR')}
-                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                    searchParams.vehicleType === 'CAR'
+                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${searchParams.vehicleType === 'CAR'
                       ? 'bg-blue-600 text-white'
                       : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
+                    }`}
                 >
                   🚗 Car
                 </button>
                 <button
                   type="button"
                   onClick={() => handleVehicleTypeFilter('BIKE')}
-                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                    searchParams.vehicleType === 'BIKE'
+                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${searchParams.vehicleType === 'BIKE'
                       ? 'bg-blue-600 text-white'
                       : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
+                    }`}
                 >
                   🏍️ Bike
                 </button>
@@ -327,7 +325,7 @@ const SearchTrips = () => {
                 Available Trips ({trips.length})
               </h2>
             </div>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {trips.map((trip) => (
                 <TripCard

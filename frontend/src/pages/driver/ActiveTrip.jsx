@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { tripService } from '../../services/tripService';
 import { rideService } from '../../services/rideService';
 import LiveTrackingMap from '../../components/LiveTrackingMap';
+import { io } from 'socket.io-client';
 
 const ActiveTrip = () => {
   const { tripId } = useParams();
@@ -12,6 +13,7 @@ const ActiveTrip = () => {
   const [error, setError] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
   const [pickupLoading, setPickupLoading] = useState({});
+  const [passengerCancelAlert, setPassengerCancelAlert] = useState(null);
 
   // Get user from localStorage - try multiple keys
   const getUserData = () => {
@@ -42,6 +44,23 @@ const ActiveTrip = () => {
     fetchTripDetails();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tripId]);
+
+  // Socket connection: listen for passenger cancellations
+  useEffect(() => {
+    const token = localStorage.getItem('authToken');
+    const socket = io('http://localhost:5000', { auth: { token } });
+
+    socket.on('ride-cancelled-by-passenger', (data) => {
+      setPassengerCancelAlert(data.message || 'A passenger has cancelled their ride.');
+      // Auto-clear after 6 seconds
+      setTimeout(() => setPassengerCancelAlert(null), 6000);
+      // Refresh trip details to update passenger list
+      fetchTripDetails();
+    });
+
+    return () => socket.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const fetchTripDetails = async () => {
     try {
@@ -208,6 +227,17 @@ const ActiveTrip = () => {
           </div>
         )}
 
+        {/* Passenger cancelled alert */}
+        {passengerCancelAlert && (
+          <div className="mb-6 p-4 bg-amber-50 border border-amber-300 rounded-lg flex items-start space-x-3">
+            <span className="text-amber-500 text-xl">ℹ️</span>
+            <div>
+              <p className="font-semibold text-amber-800">Passenger Cancellation</p>
+              <p className="text-amber-700 text-sm mt-1">{passengerCancelAlert}</p>
+            </div>
+          </div>
+        )}
+
         {/* Trip Info Card */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -254,14 +284,6 @@ const ActiveTrip = () => {
                   <p className="font-medium text-gray-900">
                     {approvedPassengers.length} / {trip.totalSeats}
                   </p>
-                </div>
-
-                {/* Debug Info */}
-                <div className="mt-3 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
-                  <p>Debug: isDriver = {isDriver ? 'true' : 'false'}</p>
-                  <p>Driver ID: {trip.driverId?._id || trip.driverId}</p>
-                  <p>User ID: {user.userId || user.id}</p>
-                  <p>Status: {trip.status}</p>
                 </div>
 
                 {isDriver && trip.status === 'SCHEDULED' && (
@@ -314,16 +336,16 @@ const ActiveTrip = () => {
                   <div className="flex items-start justify-between">
                     <div className="flex items-center space-x-3 flex-1">
                       <div className={`w-10 h-10 rounded-full flex items-center justify-center ${ride.pickupStatus === 'DROPPED_OFF'
-                          ? 'bg-gray-100'
-                          : ride.pickupStatus === 'PICKED_UP'
-                            ? 'bg-green-100'
-                            : 'bg-blue-100'
+                        ? 'bg-gray-100'
+                        : ride.pickupStatus === 'PICKED_UP'
+                          ? 'bg-green-100'
+                          : 'bg-blue-100'
                         }`}>
                         <span className={`font-semibold ${ride.pickupStatus === 'DROPPED_OFF'
-                            ? 'text-gray-700'
-                            : ride.pickupStatus === 'PICKED_UP'
-                              ? 'text-green-700'
-                              : 'text-blue-700'
+                          ? 'text-gray-700'
+                          : ride.pickupStatus === 'PICKED_UP'
+                            ? 'text-green-700'
+                            : 'text-blue-700'
                           }`}>
                           {(ride.passengerId?.name || 'P')[0].toUpperCase()}
                         </span>
@@ -334,10 +356,10 @@ const ActiveTrip = () => {
                             {ride.passengerId?.name || 'Passenger'}
                           </p>
                           <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ride.pickupStatus === 'DROPPED_OFF'
-                              ? 'bg-gray-100 text-gray-700'
-                              : ride.pickupStatus === 'PICKED_UP'
-                                ? 'bg-green-100 text-green-700'
-                                : 'bg-amber-100 text-amber-700'
+                            ? 'bg-gray-100 text-gray-700'
+                            : ride.pickupStatus === 'PICKED_UP'
+                              ? 'bg-green-100 text-green-700'
+                              : 'bg-amber-100 text-amber-700'
                             }`}>
                             {ride.pickupStatus === 'DROPPED_OFF' ? '✓ Dropped Off' :
                               ride.pickupStatus === 'PICKED_UP' ? '✓ On Board' :
