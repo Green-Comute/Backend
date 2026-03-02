@@ -8,7 +8,8 @@ import {
   endTrip,
   getDriverTrips,
   updateDriverLocation,
-  getTripById
+  getTripById,
+  getTripSummary
 } from '../controllers/tripController.js';
 import protect from '../middlewares/authMiddleware.js';
 import requireDriver from '../middlewares/driverMiddleware.js';
@@ -116,5 +117,14 @@ router.post('/trips/:id/end', protect, requireDriver, endTrip);
  * @apiBody {Number} lng Current longitude
  */
 router.post('/trips/:id/location', protect, requireDriver, updateDriverLocation);
+
+/**
+ * @api {get} /api/trips/:id/summary Get Trip Summary
+ * @apiDescription Get comprehensive trip summary with statistics and metrics
+ * @apiPermission authenticated (driver or approved passengers)
+ * @apiHeader {String} Authorization Bearer JWT token
+ * @apiParam {String} id MongoDB ObjectId of trip
+ */
+router.get('/trips/:id/summary', protect, getTripSummary);
 
 export default router;
