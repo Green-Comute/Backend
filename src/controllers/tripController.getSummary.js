@@ -173,7 +173,17 @@ export const getTripSummary = async (req, res) => {
         destination: trip.destination,
         sourceAddress: trip.sourceLocation?.address || trip.source,
         destinationAddress: trip.destinationLocation?.address || trip.destination,
-        estimatedDistance: estimatedDistance ? `${estimatedDistance} km` : 'Not available'
+        estimatedDistance: estimatedDistance ? `${estimatedDistance} km` : 'Not available',
+        waypoints: trip.waypoints?.map(wp => ({
+          address: wp.address,
+          order: wp.order,
+          coordinates: wp.coordinates?.coordinates ? {
+            lat: wp.coordinates.coordinates[1],
+            lng: wp.coordinates.coordinates[0]
+          } : null
+        })) || [],
+        isOptimized: trip.isOptimized || false,
+        routeMetadata: trip.routeMetadata || null
       },
       timing: {
         scheduledTime: trip.scheduledTime,

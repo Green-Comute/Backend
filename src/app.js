@@ -12,6 +12,7 @@ import adminDriverRoutes from "./routes/adminDriver.routes.js";
 // Epic-2 Routes (new trip/ride functionality)
 import tripRoutes from "./routes/tripRoutes.js";
 import rideRoutes from "./routes/rideRoutes.js";
+import mockTripRoutes from "./routes/mockTrip.routes.js";
 
 const app = express();
 
@@ -30,6 +31,9 @@ app.use("/driver", driverRoutes);
 // Epic-2 Routes (Trip/Ride functionality)
 app.use("/api", tripRoutes);
 app.use("/api", rideRoutes);
+
+// Mock/Testing Routes
+app.use("/api/mock", mockTripRoutes);
 
 // Serve uploaded documents
 app.use("/uploads", express.static("uploads"));

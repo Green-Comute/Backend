@@ -1,6 +1,7 @@
 import Trip from '../models/Trip.js';
 import RideRequest from '../models/RideRequest.js';
 import { getIO } from '../config/socket.js';
+import { optimizeRoute, validateRouteInput } from '../services/routeOptimization.service.js';
 
 /**
  * @fileoverview Trip Management Controller
@@ -123,7 +124,7 @@ export const createTrip = async (req, res) => {
       });
     }
 
-    const { vehicleType, totalSeats, scheduledTime, source, destination, sourceLocation, destinationLocation } = req.body;
+    const { vehicleType, totalSeats, scheduledTime, source, destination, sourceLocation, destinationLocation, waypoints } = req.body;
 
     // Validate required fields
     if (!source || !destination || !scheduledTime || !vehicleType || !totalSeats) {
@@ -131,6 +132,26 @@ export const createTrip = async (req, res) => {
         success: false,
         message: 'All fields are required: source, destination, scheduledTime, vehicleType, totalSeats'
       });
+    }
+
+    // Validate waypoints if provided
+    if (waypoints && waypoints.length > 0) {
+      if (waypoints.length > 4) {
+        return res.status(400).json({
+          success: false,
+          message: 'Maximum 4 intermediate stops allowed'
+        });
+      }
+
+      // Validate each waypoint has required fields
+      for (const wp of waypoints) {
+        if (!wp.lat || !wp.lng) {
+          return res.status(400).json({
+            success: false,
+            message: 'All waypoints must have lat and lng coordinates'
+          });
+        }
+      }
     }
 
     // Validate scheduledTime is within 7 days
@@ -197,17 +218,83 @@ export const createTrip = async (req, res) => {
       };
     }
 
-    // Set route if both source and destination coordinates are available
-    if (tripData.sourceLocation && tripData.destinationLocation) {
-      const sourceCoords = tripData.sourceLocation.coordinates.coordinates;
-      const destCoords = tripData.destinationLocation.coordinates.coordinates;
+    // Handle waypoints and route optimization
+    if (waypoints && waypoints.length > 0) {
+      // Validate route input for optimization
+      const sourceForOptimization = {
+        lat: sourceLocation?.lat,
+        lng: sourceLocation?.lng,
+        address: sourceLocation?.address || source
+      };
+
+      const destForOptimization = {
+        lat: destinationLocation?.lat,
+        lng: destinationLocation?.lng,
+        address: destinationLocation?.address || destination
+      };
+
+      const validation = validateRouteInput(sourceForOptimization, destForOptimization, waypoints);
       
-      // Only set route if coordinates are distinct
-      if (sourceCoords[0] !== destCoords[0] || sourceCoords[1] !== destCoords[1]) {
+      if (!validation.valid) {
+        return res.status(400).json({
+          success: false,
+          message: validation.error
+        });
+      }
+
+      // Optimize waypoint order
+      try {
+        const optimizedRoute = optimizeRoute(sourceForOptimization, destForOptimization, waypoints);
+        
+        // Store optimized waypoints with order
+        tripData.waypoints = optimizedRoute.orderedWaypoints.map((wp, index) => ({
+          address: wp.address || `Stop ${index + 1}`,
+          coordinates: {
+            type: 'Point',
+            coordinates: [parseFloat(wp.lng), parseFloat(wp.lat)]
+          },
+          order: index + 1
+        }));
+
+        tripData.isOptimized = true;
+        tripData.routeMetadata = {
+          totalDistance: optimizedRoute.totalDistance,
+          estimatedDuration: optimizedRoute.estimatedDuration,
+          optimizationApplied: true
+        };
+
+        // Build route coordinates including optimized waypoints
+        const routeCoordinates = [
+          tripData.sourceLocation.coordinates.coordinates,
+          ...optimizedRoute.orderedWaypoints.map(wp => [parseFloat(wp.lng), parseFloat(wp.lat)]),
+          tripData.destinationLocation.coordinates.coordinates
+        ];
+
         tripData.route = {
           type: 'LineString',
-          coordinates: [sourceCoords, destCoords]
+          coordinates: routeCoordinates
         };
+
+      } catch (optimizationError) {
+        console.error('Route optimization error:', optimizationError);
+        return res.status(400).json({
+          success: false,
+          message: optimizationError.message || 'Failed to optimize route'
+        });
+      }
+    } else {
+      // No waypoints - set simple route if both source and destination coordinates are available
+      if (tripData.sourceLocation && tripData.destinationLocation) {
+        const sourceCoords = tripData.sourceLocation.coordinates.coordinates;
+        const destCoords = tripData.destinationLocation.coordinates.coordinates;
+        
+        // Only set route if coordinates are distinct
+        if (sourceCoords[0] !== destCoords[0] || sourceCoords[1] !== destCoords[1]) {
+          tripData.route = {
+            type: 'LineString',
+            coordinates: [sourceCoords, destCoords]
+          };
+        }
       }
     }
 
@@ -1289,6 +1376,105 @@ export const getTripSummary = async (req, res) => {
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to get trip summary'
+    });
+  }
+};
+
+/**
+ * Get Optimized Route Preview
+ * 
+ * @description Get optimized route with passenger pickup locations for driver to preview
+ * before starting the trip. Only available for trips with approved passengers and optimized routes.
+ * 
+ * @route GET /api/trips/:id/route-preview
+ * @access Private (Driver only - must be the trip owner)
+ * 
+ * @param {Object} req.user - Decoded JWT payload
+ * @param {string} req.user.userId - MongoDB ObjectId of authenticated driver
+ * @param {string} req.params.id - MongoDB ObjectId of trip
+ * 
+ * @returns {Object} 200 - Optimized route preview
+ * @returns {Object} 400 - No optimized route available
+ * @returns {Object} 403 - Not authorized (not the trip driver)
+ * @returns {Object} 404 - Trip not found
+ * 
+ * @example
+ * // Response
+ * {
+ *   "success": true,
+ *   "route": {
+ *     "isOptimized": true,
+ *     "waypoints": [
+ *       {
+ *         "order": 1,
+ *         "lat": 40.7128,
+ *         "lng": -74.0060,
+ *         "address": "123 Main St",
+ *         "passengerId": "...",
+ *         "passengerName": "John Doe",
+ *         "distanceFromPrevious": 2.5
+ *       }
+ *     ],
+ *     "totalDistance": 15.5,
+ *     "estimatedDuration": 35,
+ *     "passengersCount": 3
+ *   }
+ * }
+ */
+export const getOptimizedRoutePreview = async (req, res) => {
+  try {
+    const trip = await Trip.findById(req.params.id)
+      .populate('driverId', 'name email');
+
+    if (!trip) {
+      return res.status(404).json({
+        success: false,
+        message: 'Trip not found'
+      });
+    }
+
+    // Verify the user is the driver
+    if (trip.driverId._id.toString() !== req.user.userId) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only the trip driver can view route preview'
+      });
+    }
+
+    // Check if route is optimized
+    if (!trip.isOptimized || !trip.waypoints || trip.waypoints.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No optimized route available. Route will be optimized when passengers are approved.'
+      });
+    }
+
+    // Return route preview
+    res.status(200).json({
+      success: true,
+      route: {
+        isOptimized: trip.isOptimized,
+        waypoints: trip.waypoints,
+        totalDistance: trip.routeMetadata?.totalDistance || 0,
+        estimatedDuration: trip.routeMetadata?.estimatedDuration || 0,
+        passengersCount: trip.waypoints.length,
+        optimizedAt: trip.routeMetadata?.optimizationApplied || null,
+        source: {
+          address: trip.sourceLocation?.address || trip.source,
+          coordinates: trip.sourceLocation?.coordinates?.coordinates || null
+        },
+        destination: {
+          address: trip.destinationLocation?.address || trip.destination,
+          coordinates: trip.destinationLocation?.coordinates?.coordinates || null
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Get optimized route preview error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to get route preview'
     });
   }
 };
