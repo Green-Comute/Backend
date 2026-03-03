@@ -12,7 +12,7 @@
  * @param {Object} point2 - Second location {lat, lng}
  * @returns {number} Distance in kilometers
  */
-const calculateDistance = (point1, point2) => {
+export const calculateDistance = (point1, point2) => {
   const R = 6371; // Earth's radius in km
   const dLat = toRadians(point2.lat - point1.lat);
   const dLng = toRadians(point2.lng - point1.lng);
@@ -42,7 +42,7 @@ const toRadians = (degrees) => {
  * @param {Array<Object>} points - Array of ordered waypoints [{lat, lng}, ...]
  * @returns {number} Total distance in kilometers
  */
-const calculateTotalDistance = (points) => {
+export const calculateTotalDistance = (points) => {
   let total = 0;
   for (let i = 0; i < points.length - 1; i++) {
     total += calculateDistance(points[i], points[i + 1]);
