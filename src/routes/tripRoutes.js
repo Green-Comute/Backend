@@ -9,7 +9,9 @@ import {
   getDriverTrips,
   updateDriverLocation,
   getTripById,
-  getAllOrgTrips
+  getAllOrgTrips,
+  getTripSummary,
+  getOptimizedRoutePreview
 } from '../controllers/tripController.js';
 import protect from '../middlewares/authMiddleware.js';
 import requireDriver from '../middlewares/driverMiddleware.js';
@@ -123,5 +125,22 @@ router.post('/trips/:id/end', protect, requireDriver, endTrip);
  */
 router.post('/trips/:id/location', protect, requireDriver, updateDriverLocation);
 
+/**
+ * @api {get} /api/trips/:id/summary Get Trip Summary
+ * @apiDescription Get comprehensive trip summary with statistics and metrics
+ * @apiPermission authenticated (driver or approved passengers)
+ * @apiHeader {String} Authorization Bearer JWT token
+ * @apiParam {String} id MongoDB ObjectId of trip
+ */
+router.get('/trips/:id/summary', protect, getTripSummary);
+
+/**
+ * @api {get} /api/trips/:id/route-preview Get Optimized Route Preview
+ * @apiDescription Get optimized route with passenger pickup locations before starting trip
+ * @apiPermission driver (trip owner only)
+ * @apiHeader {String} Authorization Bearer JWT token
+ * @apiParam {String} id MongoDB ObjectId of trip
+ */
+router.get('/trips/:id/route-preview', protect, requireDriver, getOptimizedRoutePreview);
 
 export default router;

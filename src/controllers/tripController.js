@@ -1,6 +1,7 @@
 import Trip from '../models/Trip.js';
 import RideRequest from '../models/RideRequest.js';
 import { getIO } from '../config/socket.js';
+import { optimizeRoute, validateRouteInput } from '../services/routeOptimization.service.js';
 
 /**
  * @fileoverview Trip Management Controller
@@ -123,7 +124,7 @@ export const createTrip = async (req, res) => {
       });
     }
 
-    const { vehicleType, totalSeats, scheduledTime, source, destination, sourceLocation, destinationLocation } = req.body;
+    const { vehicleType, totalSeats, scheduledTime, source, destination, sourceLocation, destinationLocation, waypoints } = req.body;
 
     // Validate required fields
     if (!source || !destination || !scheduledTime || !vehicleType || !totalSeats) {
@@ -131,6 +132,26 @@ export const createTrip = async (req, res) => {
         success: false,
         message: 'All fields are required: source, destination, scheduledTime, vehicleType, totalSeats'
       });
+    }
+
+    // Validate waypoints if provided
+    if (waypoints && waypoints.length > 0) {
+      if (waypoints.length > 4) {
+        return res.status(400).json({
+          success: false,
+          message: 'Maximum 4 intermediate stops allowed'
+        });
+      }
+
+      // Validate each waypoint has required fields
+      for (const wp of waypoints) {
+        if (!wp.lat || !wp.lng) {
+          return res.status(400).json({
+            success: false,
+            message: 'All waypoints must have lat and lng coordinates'
+          });
+        }
+      }
     }
 
     // Validate scheduledTime is within 7 days
@@ -198,17 +219,83 @@ export const createTrip = async (req, res) => {
       };
     }
 
-    // Set route if both source and destination coordinates are available
-    if (tripData.sourceLocation && tripData.destinationLocation) {
-      const sourceCoords = tripData.sourceLocation.coordinates.coordinates;
-      const destCoords = tripData.destinationLocation.coordinates.coordinates;
+    // Handle waypoints and route optimization
+    if (waypoints && waypoints.length > 0) {
+      // Validate route input for optimization
+      const sourceForOptimization = {
+        lat: sourceLocation?.lat,
+        lng: sourceLocation?.lng,
+        address: sourceLocation?.address || source
+      };
 
-      // Only set route if coordinates are distinct
-      if (sourceCoords[0] !== destCoords[0] || sourceCoords[1] !== destCoords[1]) {
+      const destForOptimization = {
+        lat: destinationLocation?.lat,
+        lng: destinationLocation?.lng,
+        address: destinationLocation?.address || destination
+      };
+
+      const validation = validateRouteInput(sourceForOptimization, destForOptimization, waypoints);
+
+      if (!validation.valid) {
+        return res.status(400).json({
+          success: false,
+          message: validation.error
+        });
+      }
+
+      // Optimize waypoint order
+      try {
+        const optimizedRoute = optimizeRoute(sourceForOptimization, destForOptimization, waypoints);
+
+        // Store optimized waypoints with order
+        tripData.waypoints = optimizedRoute.orderedWaypoints.map((wp, index) => ({
+          address: wp.address || `Stop ${index + 1}`,
+          coordinates: {
+            type: 'Point',
+            coordinates: [parseFloat(wp.lng), parseFloat(wp.lat)]
+          },
+          order: index + 1
+        }));
+
+        tripData.isOptimized = true;
+        tripData.routeMetadata = {
+          totalDistance: optimizedRoute.totalDistance,
+          estimatedDuration: optimizedRoute.estimatedDuration,
+          optimizationApplied: true
+        };
+
+        // Build route coordinates including optimized waypoints
+        const routeCoordinates = [
+          tripData.sourceLocation.coordinates.coordinates,
+          ...optimizedRoute.orderedWaypoints.map(wp => [parseFloat(wp.lng), parseFloat(wp.lat)]),
+          tripData.destinationLocation.coordinates.coordinates
+        ];
+
         tripData.route = {
           type: 'LineString',
-          coordinates: [sourceCoords, destCoords]
+          coordinates: routeCoordinates
         };
+
+      } catch (optimizationError) {
+        console.error('Route optimization error:', optimizationError);
+        return res.status(400).json({
+          success: false,
+          message: optimizationError.message || 'Failed to optimize route'
+        });
+      }
+    } else {
+      // No waypoints - set simple route if both source and destination coordinates are available
+      if (tripData.sourceLocation && tripData.destinationLocation) {
+        const sourceCoords = tripData.sourceLocation.coordinates.coordinates;
+        const destCoords = tripData.destinationLocation.coordinates.coordinates;
+
+        // Only set route if coordinates are distinct
+        if (sourceCoords[0] !== destCoords[0] || sourceCoords[1] !== destCoords[1]) {
+          tripData.route = {
+            type: 'LineString',
+            coordinates: [sourceCoords, destCoords]
+          };
+        }
       }
     }
 
@@ -1167,6 +1254,246 @@ export const getAllOrgTrips = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch trips'
+    });
+  }
+};
+
+/**
+ * Get Trip Summary
+ * 
+ * @description Provides comprehensive trip summary after completion including statistics,
+ * passenger details, time metrics, and route information. Used for post-trip review.
+ * 
+ * @route GET /api/trips/:id/summary
+ * @access Private (Trip participants only - driver or approved passengers)
+ * 
+ * @param {Object} req.params
+ * @param {string} req.params.id - MongoDB ObjectId of trip
+ * @param {Object} req.user - Decoded JWT payload
+ * @param {string} req.user.userId - MongoDB ObjectId of authenticated user
+ * 
+ * @returns {Object} 200 - Trip summary data
+ * @returns {Object} 403 - User not authorized to view this trip
+ * @returns {Object} 404 - Trip not found
+ */
+export const getTripSummary = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.userId;
+
+    // Fetch trip with driver details
+    const trip = await Trip.findById(id)
+      .populate('driverId', 'name email phoneNumber')
+      .lean();
+
+    if (!trip) {
+      return res.status(404).json({
+        success: false,
+        message: 'Trip not found'
+      });
+    }
+
+    // Fetch all ride requests for this trip
+    const rideRequests = await RideRequest.find({ tripId: id })
+      .populate('passengerId', 'name email phoneNumber pickupLocation')
+      .lean();
+
+    // Authorization: Check if user is driver or an approved passenger
+    const isDriver = trip.driverId._id.toString() === userId.toString();
+    const isApprovedPassenger = rideRequests.some(
+      ride => ride.status === 'APPROVED' && ride.passengerId._id.toString() === userId.toString()
+    );
+
+    if (!isDriver && !isApprovedPassenger) {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not authorized to view this trip summary'
+      });
+    }
+
+    // Calculate timing metrics
+    const scheduledTime = new Date(trip.scheduledTime);
+    const actualStartTime = trip.actualStartTime ? new Date(trip.actualStartTime) : null;
+    const actualEndTime = trip.actualEndTime ? new Date(trip.actualEndTime) : null;
+
+    let durationMinutes = null;
+    let delayMinutes = null;
+
+    if (actualStartTime && actualEndTime) {
+      durationMinutes = Math.round((actualEndTime - actualStartTime) / 1000 / 60);
+    }
+
+    if (actualStartTime) {
+      delayMinutes = Math.round((actualStartTime - scheduledTime) / 1000 / 60);
+    }
+
+    // Calculate passenger statistics
+    const approvedRides = rideRequests.filter(ride => ride.status === 'APPROVED');
+    const pickedUpCount = approvedRides.filter(ride => ride.pickupStatus === 'PICKED_UP' || ride.pickupStatus === 'DROPPED_OFF').length;
+    const droppedOffCount = approvedRides.filter(ride => ride.pickupStatus === 'DROPPED_OFF').length;
+
+    // Build passenger list
+    const passengerList = approvedRides.map(ride => ({
+      passengerId: ride.passengerId._id,
+      name: ride.passengerId.name,
+      email: ride.passengerId.email,
+      phoneNumber: ride.passengerId.phoneNumber,
+      pickupAddress: ride.passengerId.pickupLocation?.address || 'Not specified',
+      pickupStatus: ride.pickupStatus,
+      pickedUpAt: ride.pickedUpAt,
+      droppedOffAt: ride.droppedOffAt,
+      requestedAt: ride.createdAt
+    }));
+
+    // Extract route coordinates for distance calculation
+    let estimatedDistance = null;
+    if (trip.sourceLocation?.coordinates?.coordinates && trip.destinationLocation?.coordinates?.coordinates) {
+      const [srcLng, srcLat] = trip.sourceLocation.coordinates.coordinates;
+      const [destLng, destLat] = trip.destinationLocation.coordinates.coordinates;
+
+      // Haversine formula for distance (in km)
+      const R = 6371; // Earth's radius in km
+      const dLat = (destLat - srcLat) * Math.PI / 180;
+      const dLng = (destLng - srcLng) * Math.PI / 180;
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(srcLat * Math.PI / 180) * Math.cos(destLat * Math.PI / 180) *
+        Math.sin(dLng / 2) * Math.sin(dLng / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      estimatedDistance = Math.round(R * c * 10) / 10; // Round to 1 decimal
+    }
+
+    // Build summary response
+    const summary = {
+      tripId: trip._id,
+      status: trip.status,
+      driver: {
+        id: trip.driverId._id,
+        name: trip.driverId.name,
+        email: trip.driverId.email,
+        phoneNumber: trip.driverId.phoneNumber
+      },
+      route: {
+        source: trip.source,
+        destination: trip.destination,
+        sourceAddress: trip.sourceLocation?.address || trip.source,
+        destinationAddress: trip.destinationLocation?.address || trip.destination,
+        estimatedDistance: estimatedDistance ? `${estimatedDistance} km` : 'Not available'
+      },
+      timing: {
+        scheduledTime: trip.scheduledTime,
+        actualStartTime: trip.actualStartTime,
+        actualEndTime: trip.actualEndTime,
+        durationMinutes,
+        durationFormatted: durationMinutes ? `${Math.floor(durationMinutes / 60)}h ${durationMinutes % 60}m` : null,
+        delayMinutes,
+        delayFormatted: delayMinutes !== null ? (delayMinutes >= 0 ? `${delayMinutes}m late` : `${Math.abs(delayMinutes)}m early`) : null
+      },
+      passengers: {
+        total: approvedRides.length,
+        pickedUp: pickedUpCount,
+        droppedOff: droppedOffCount,
+        list: passengerList
+      },
+      vehicle: {
+        type: trip.vehicleType,
+        totalSeats: trip.totalSeats,
+        seatsOccupied: approvedRides.length
+      },
+      cost: {
+        estimated: trip.estimatedCost,
+        currency: 'INR'
+      },
+      createdAt: trip.createdAt,
+      updatedAt: trip.updatedAt
+    };
+
+    res.status(200).json({
+      success: true,
+      summary
+    });
+
+  } catch (error) {
+    console.error('Get trip summary error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to get trip summary'
+    });
+  }
+};
+
+/**
+ * Get Optimized Route Preview
+ * 
+ * @description Get optimized route with passenger pickup locations for driver to preview
+ * before starting the trip. Only available for trips with approved passengers and optimized routes.
+ * 
+ * @route GET /api/trips/:id/route-preview
+ * @access Private (Driver only - must be the trip owner)
+ * 
+ * @param {Object} req.user - Decoded JWT payload
+ * @param {string} req.user.userId - MongoDB ObjectId of authenticated driver
+ * @param {string} req.params.id - MongoDB ObjectId of trip
+ * 
+ * @returns {Object} 200 - Optimized route preview
+ * @returns {Object} 400 - No optimized route available
+ * @returns {Object} 403 - Not authorized (not the trip driver)
+ * @returns {Object} 404 - Trip not found
+ */
+export const getOptimizedRoutePreview = async (req, res) => {
+  try {
+    const trip = await Trip.findById(req.params.id)
+      .populate('driverId', 'name email');
+
+    if (!trip) {
+      return res.status(404).json({
+        success: false,
+        message: 'Trip not found'
+      });
+    }
+
+    // Verify the user is the driver
+    if (trip.driverId._id.toString() !== req.user.userId) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only the trip driver can view route preview'
+      });
+    }
+
+    // Check if route is optimized
+    if (!trip.isOptimized || !trip.waypoints || trip.waypoints.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No optimized route available. Route will be optimized when passengers are approved.'
+      });
+    }
+
+    // Return route preview
+    res.status(200).json({
+      success: true,
+      route: {
+        isOptimized: trip.isOptimized,
+        waypoints: trip.waypoints,
+        totalDistance: trip.routeMetadata?.totalDistance || 0,
+        estimatedDuration: trip.routeMetadata?.estimatedDuration || 0,
+        passengersCount: trip.waypoints.length,
+        optimizedAt: trip.routeMetadata?.optimizationApplied || null,
+        source: {
+          address: trip.sourceLocation?.address || trip.source,
+          coordinates: trip.sourceLocation?.coordinates?.coordinates || null
+        },
+        destination: {
+          address: trip.destinationLocation?.address || trip.destination,
+          coordinates: trip.destinationLocation?.coordinates?.coordinates || null
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Get optimized route preview error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to get route preview'
     });
   }
 };

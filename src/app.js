@@ -12,6 +12,7 @@ import adminDriverRoutes from "./routes/adminDriver.routes.js";
 // Epic-2 Routes (new trip/ride functionality)
 import tripRoutes from "./routes/tripRoutes.js";
 import rideRoutes from "./routes/rideRoutes.js";
+import mockTripRoutes from "./routes/mockTrip.routes.js";
 
 // Epic-4 Routes (Gamification & Rewards)
 import gamificationRoutes from "./routes/gamification.routes.js";
@@ -42,6 +43,9 @@ app.use("/api/gamification", gamificationRoutes);
 app.use("/api/rewards", rewardsRoutes);
 app.use("/org-admin/rewards", rewardsAdminRoutes);
 app.use("/platform/point-rules", pointRulesRoutes);
+
+// Mock/Testing Routes
+app.use("/api/mock", mockTripRoutes);
 
 // Serve uploaded documents
 app.use("/uploads", express.static("uploads"));

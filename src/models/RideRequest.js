@@ -17,6 +17,16 @@ import mongoose from 'mongoose';
  * 
  * @property {ObjectId} passengerId - Reference to User (passenger)
  * @property {ObjectId} tripId - Reference to Trip
+ * @property {Object} pickupLocation - Passenger's pickup location (GeoJSON Point)
+ * @property {string} pickupLocation.address - Pickup address text
+ * @property {Object} pickupLocation.coordinates - GeoJSON Point coordinates
+ * @property {string} pickupLocation.coordinates.type - Always 'Point'
+ * @property {number[]} pickupLocation.coordinates.coordinates - [longitude, latitude]
+ * @property {Object} [dropoffLocation] - Passenger's dropoff location (GeoJSON Point, optional - defaults to trip destination)
+ * @property {string} dropoffLocation.address - Dropoff address text
+ * @property {Object} dropoffLocation.coordinates - GeoJSON Point coordinates
+ * @property {string} dropoffLocation.coordinates.type - Always 'Point'
+ * @property {number[]} dropoffLocation.coordinates.coordinates - [longitude, latitude]
  * @property {string} status - Request status: PENDING, APPROVED, REJECTED (default: PENDING)
  * @property {string} pickupStatus - Pickup status: WAITING, PICKED_UP, DROPPED_OFF (default: WAITING)
  * @property {Date} [pickedUpAt] - Timestamp when marked as picked up
@@ -71,6 +81,54 @@ const rideRequestSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Trip',
     required: [true, 'Trip ID is required']
+  },
+  pickupLocation: {
+    address: {
+      type: String,
+      required: [true, 'Pickup address is required']
+    },
+    coordinates: {
+      type: {
+        type: String,
+        enum: ['Point'],
+        default: 'Point'
+      },
+      coordinates: {
+        type: [Number], // [longitude, latitude]
+        required: [true, 'Pickup coordinates are required'],
+        validate: {
+          validator: function(coords) {
+            return coords.length === 2 && 
+                   coords[0] >= -180 && coords[0] <= 180 && // longitude
+                   coords[1] >= -90 && coords[1] <= 90;     // latitude
+          },
+          message: 'Invalid coordinates format. Must be [longitude, latitude]'
+        }
+      }
+    }
+  },
+  dropoffLocation: {
+    address: {
+      type: String
+    },
+    coordinates: {
+      type: {
+        type: String,
+        enum: ['Point'],
+        default: 'Point'
+      },
+      coordinates: {
+        type: [Number], // [longitude, latitude]
+        validate: {
+          validator: function(coords) {
+            return coords.length === 2 && 
+                   coords[0] >= -180 && coords[0] <= 180 && // longitude
+                   coords[1] >= -90 && coords[1] <= 90;     // latitude
+          },
+          message: 'Invalid coordinates format. Must be [longitude, latitude]'
+        }
+      }
+    }
   },
   status: {
     type: String,
