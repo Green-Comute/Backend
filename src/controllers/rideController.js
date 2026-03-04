@@ -1,6 +1,7 @@
 import RideRequest from '../models/RideRequest.js';
 import Trip from '../models/Trip.js';
 import { getIO } from '../config/socket.js';
+import { optimizeRoute } from '../services/routeOptimization.service.js';
 
 /**
  * @fileoverview Ride Request Management Controller
@@ -66,7 +67,7 @@ import { getIO } from '../config/socket.js';
  */
 export const requestRide = async (req, res) => {
   try {
-    const { tripId } = req.body;
+    const { tripId, pickupLocation, dropoffLocation } = req.body;
     const passengerId = req.user.userId;
 
     // Validate user authentication
@@ -81,6 +82,23 @@ export const requestRide = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'Trip ID is required'
+      });
+    }
+
+    // Validate pickup location
+    if (!pickupLocation || !pickupLocation.address || !pickupLocation.coordinates) {
+      return res.status(400).json({
+        success: false,
+        message: 'Pickup location with address and coordinates is required'
+      });
+    }
+
+    // Validate pickup coordinates format
+    const pickupCoords = pickupLocation.coordinates.coordinates || pickupLocation.coordinates;
+    if (!Array.isArray(pickupCoords) || pickupCoords.length !== 2) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid pickup coordinates format. Must be [longitude, latitude]'
       });
     }
 
@@ -130,12 +148,50 @@ export const requestRide = async (req, res) => {
       });
     }
 
-    // Create ride request
-    const rideRequest = await RideRequest.create({
+    // Prepare pickup location in GeoJSON format
+    const pickupLocationData = {
+      address: pickupLocation.address,
+      coordinates: {
+        type: 'Point',
+        coordinates: pickupCoords
+      }
+    };
+
+    console.log('🔍 DEBUG: pickupCoords BEFORE save:', pickupCoords);
+    console.log('🔍 DEBUG: pickupLocationData BEFORE save:', JSON.stringify(pickupLocationData, null, 2));
+
+    // Prepare dropoff location if provided
+    let dropoffLocationData = null;
+    if (dropoffLocation && dropoffLocation.address && dropoffLocation.coordinates) {
+      const dropoffCoords = dropoffLocation.coordinates.coordinates || dropoffLocation.coordinates;
+      if (Array.isArray(dropoffCoords) && dropoffCoords.length === 2) {
+        dropoffLocationData = {
+          address: dropoffLocation.address,
+          coordinates: {
+            type: 'Point',
+            coordinates: dropoffCoords
+          }
+        };
+      }
+    }
+
+    // Create ride request with pickup/dropoff locations
+    const rideRequestData = {
       passengerId,
       tripId,
-      status: 'PENDING'
-    });
+      status: 'PENDING',
+      pickupLocation: pickupLocationData
+    };
+
+    if (dropoffLocationData) {
+      rideRequestData.dropoffLocation = dropoffLocationData;
+    }
+
+    console.log('🔍 DEBUG: rideRequestData BEFORE create:', JSON.stringify(rideRequestData, null, 2));
+
+    const rideRequest = await RideRequest.create(rideRequestData);
+
+    console.log('🔍 DEBUG: rideRequest AFTER create:', JSON.stringify(rideRequest.pickupLocation, null, 2));
 
     const populatedRequest = await RideRequest.findById(rideRequest._id)
       .populate('passengerId', 'name email')
@@ -277,6 +333,17 @@ export const approveRide = async (req, res) => {
     // Update ride request status
     rideRequest.status = 'APPROVED';
     await rideRequest.save();
+
+    // Optimize route with all approved passengers' pickup locations
+    try {
+      console.log('🎯 Starting route optimization for trip:', rideRequest.tripId._id);
+      await optimizeRouteForTrip(rideRequest.tripId._id);
+      console.log('✅ Route optimization completed successfully');
+    } catch (optimizeError) {
+      console.error('❌ Route optimization error:', optimizeError);
+      console.error('Stack:', optimizeError.stack);
+      // Continue even if optimization fails - non-critical
+    }
 
     // Emit Socket.io event to passenger
     try {
@@ -1010,3 +1077,114 @@ export const cancelRide = async (req, res) => {
     });
   }
 };
+
+/**
+ * Optimize Route for Trip
+ * 
+ * @description Helper function to optimize route based on all approved passengers' pickup locations.
+ * Called after a passenger is approved. Collects all approved passengers' pickup locations,
+ * runs the optimization algorithm, and updates the trip with optimized waypoints.
+ * 
+ * @param {ObjectId} tripId - Trip ID to optimize
+ * @returns {Promise<void>}
+ */
+async function optimizeRouteForTrip(tripId) {
+  console.log('🔧 optimizeRouteForTrip called with tripId:', tripId);
+  
+  // Get trip with source and destination
+  const trip = await Trip.findById(tripId);
+  if (!trip) {
+    console.error('❌ Trip not found:', tripId);
+    throw new Error('Trip not found');
+  }
+  
+  console.log('📍 Trip found:', {
+    id: trip._id,
+    source: trip.sourceLocation?.address || trip.source,
+    destination: trip.destinationLocation?.address || trip.destination
+  });
+
+  // Get all approved ride requests for this trip
+  const approvedRequests = await RideRequest.find({
+    tripId,
+    status: 'APPROVED'
+  }).populate('passengerId', 'name');
+
+  console.log(`🚗 Found ${approvedRequests.length} approved ride requests`);
+  
+  // If no approved passengers or only 1, no optimization needed
+  if (approvedRequests.length === 0) {
+    console.log('⚠️ No approved passengers, skipping optimization');
+    return;
+  }
+  
+  console.log('📦 Approved requests structure:', approvedRequests.map(r => ({
+    id: r._id,
+    passenger: r.passengerId?.name,
+    hasPickup: !!r.pickupLocation,
+    hasCoords: !!r.pickupLocation?.coordinates
+  })));
+
+  // Validate max 4 passengers
+  if (approvedRequests.length > 4) {
+    console.warn(`Trip ${tripId} has more than 4 approved passengers. Optimizing first 4 only.`);
+  }
+
+  // Extract pickup locations from approved requests (max 4)
+  const waypoints = approvedRequests.slice(0, 4).map(request => ({
+    lat: request.pickupLocation.coordinates.coordinates[1],
+    lng: request.pickupLocation.coordinates.coordinates[0],
+    address: request.pickupLocation.address,
+    passengerId: request.passengerId._id,
+    passengerName: request.passengerId.name
+  }));
+
+  // Extract trip source and destination
+  const source = {
+    lat: trip.sourceLocation.coordinates.coordinates[1],
+    lng: trip.sourceLocation.coordinates.coordinates[0]
+  };
+
+  const destination = {
+    lat: trip.destinationLocation.coordinates.coordinates[1],
+    lng: trip.destinationLocation.coordinates.coordinates[0]
+  };
+
+  // Run optimization algorithm
+  const optimizationResult = optimizeRoute(source, destination, waypoints);
+  
+  console.log('✨ Optimization result:', {
+    waypointsCount: optimizationResult.orderedWaypoints.length,
+    totalDistance: optimizationResult.totalDistance,
+    estimatedDuration: optimizationResult.estimatedDuration
+  });
+
+  // Update trip with optimized waypoints - MUST match Trip model schema format
+  trip.waypoints = optimizationResult.orderedWaypoints.map((wp, index) => ({
+    address: wp.address,
+    coordinates: {
+      type: 'Point',
+      coordinates: [wp.lng, wp.lat] // [longitude, latitude] as per GeoJSON
+    },
+    order: index + 1,
+    passengerName: wp.passengerName,
+    passengerId: wp.passengerId,
+    distanceFromPrevious: index === 0 
+      ? optimizationResult.legs[0]?.distance 
+      : optimizationResult.legs[index]?.distance
+  }));
+  trip.isOptimized = true;
+  trip.routeMetadata = {
+    totalDistance: optimizationResult.totalDistance,
+    estimatedDuration: optimizationResult.estimatedDuration,
+    optimizationApplied: true
+  };
+
+  await trip.save();
+  
+  console.log(`✅ Route optimized and saved for trip ${tripId}:`, {
+    waypointsCount: trip.waypoints.length,
+    isOptimized: trip.isOptimized,
+    totalDistance: trip.routeMetadata.totalDistance
+  });
+}

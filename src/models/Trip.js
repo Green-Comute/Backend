@@ -165,6 +165,44 @@ const tripSchema = new mongoose.Schema({
       coordinates: { type: [Number], default: [0, 0] } // [longitude, latitude]
     }
   },
+  waypoints: {
+    type: [{
+      address: String,
+      coordinates: {
+        type: { type: String, enum: ['Point'], default: 'Point' },
+        coordinates: { type: [Number], required: true } // [longitude, latitude]
+      },
+      order: {
+        type: Number,
+        required: true
+      },
+      passengerName: String,
+      passengerId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+      },
+      distanceFromPrevious: Number // distance in km from previous waypoint or source
+    }],
+    default: [],
+    validate: {
+      validator: function(waypoints) {
+        return waypoints.length <= 4;
+      },
+      message: 'Maximum 4 intermediate waypoints allowed'
+    }
+  },
+  isOptimized: {
+    type: Boolean,
+    default: false
+  },
+  routeMetadata: {
+    totalDistance: Number, // in kilometers
+    estimatedDuration: Number, // in minutes
+    optimizationApplied: {
+      type: Boolean,
+      default: false
+    }
+  },
   scheduledTime: {
     type: Date,
     required: [true, 'Scheduled time is required'],

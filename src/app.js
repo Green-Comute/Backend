@@ -21,6 +21,7 @@ import carbonRoutes from "./routes/carbon.routes.js";
 import impactRoutes from "./routes/impact.routes.js";
 import esgAdminRoutes from "./routes/esgAdmin.routes.js";
 import exportRoutes from "./routes/export.routes.js";
+import mockTripRoutes from "./routes/mockTrip.routes.js";
 
 const app = express();
 
@@ -45,6 +46,9 @@ app.use("/api/carbon", carbonRoutes);
 app.use("/api/impact", impactRoutes);
 app.use("/api/esg-admin", esgAdminRoutes);
 app.use("/api/export", exportRoutes);
+
+// Mock/Testing Routes
+app.use("/api/mock", mockTripRoutes);
 
 // Serve uploaded documents
 app.use("/uploads", express.static("uploads"));
