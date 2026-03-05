@@ -3,6 +3,7 @@ import Trip from '../models/Trip.js';
 import { getIO } from '../config/socket.js';
 import { creditRidePoints } from '../services/points.service.js';
 import { optimizeRoute } from '../services/routeOptimization.service.js';
+import { getSuggestedPickupZone, formatPickupZoneNotification } from '../services/smartPickupZone.service.js';
 
 /**
  * @fileoverview Ride Request Management Controller
@@ -188,6 +189,27 @@ export const requestRide = async (req, res) => {
       rideRequestData.dropoffLocation = dropoffLocationData;
     }
 
+    // Check for nearby smart pickup zones
+    try {
+      const suggestedZone = await getSuggestedPickupZone(
+        pickupCoords,
+        300, // Suggest zones within 300 meters
+        trip.organizationId // Pass organization ID if trip has one
+      );
+
+      if (suggestedZone) {
+        rideRequestData.suggestedPickupZone = {
+          zoneId: suggestedZone._id,
+          distance: suggestedZone.distance,
+          isAccepted: false
+        };
+        console.log('✅ Smart pickup zone found:', suggestedZone.name, `(${suggestedZone.distance}m away)`);
+      }
+    } catch (zoneError) {
+      // Don't fail the request if zone detection fails
+      console.error('Smart pickup zone detection error:', zoneError);
+    }
+
     console.log('🔍 DEBUG: rideRequestData BEFORE create:', JSON.stringify(rideRequestData, null, 2));
 
     const rideRequest = await RideRequest.create(rideRequestData);
@@ -196,16 +218,43 @@ export const requestRide = async (req, res) => {
 
     const populatedRequest = await RideRequest.findById(rideRequest._id)
       .populate('passengerId', 'name email')
-      .populate('tripId');
+      .populate('tripId')
+      .populate('suggestedPickupZone.zoneId');
 
-    // Emit socket event to driver about new ride request
+    // Emit socket events
     try {
       const io = getIO();
+      
+      // Notify driver about new ride request
       io.to(`user-${trip.driverId}`).emit('new-ride-request', {
         rideRequest: populatedRequest,
         message: 'New ride request received',
         timestamp: new Date()
       });
+
+      // Notify passenger about smart pickup zone if available
+      if (populatedRequest.suggestedPickupZone && populatedRequest.suggestedPickupZone.zoneId) {
+        const zone = populatedRequest.suggestedPickupZone.zoneId;
+        io.to(`user-${passengerId}`).emit('smart-pickup-zone-suggestion', {
+          rideRequestId: rideRequest._id,
+          zone: {
+            _id: zone._id,
+            name: zone.name,
+            type: zone.type,
+            address: zone.address,
+            description: zone.description,
+            location: zone.location,
+            distance: populatedRequest.suggestedPickupZone.distance
+          },
+          message: formatPickupZoneNotification({
+            name: zone.name,
+            type: zone.type,
+            distance: populatedRequest.suggestedPickupZone.distance
+          }),
+          timestamp: new Date()
+        });
+        console.log('📍 Sent smart pickup zone notification to passenger');
+      }
     } catch (socketError) {
       console.error('Socket.io emit error:', socketError);
     }

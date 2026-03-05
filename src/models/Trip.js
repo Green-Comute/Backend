@@ -205,6 +205,12 @@ const tripSchema = new mongoose.Schema({
     required: [true, 'Scheduled time is required'],
     validate: {
       validator: function (value) {
+        // Only validate scheduledTime when creating a new trip or when scheduledTime is being modified
+        // Skip validation when just updating other fields like status
+        if (!this.isNew && !this.isModified('scheduledTime')) {
+          return true;
+        }
+        
         const now = new Date();
         const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
         return value >= now && value <= sevenDaysFromNow;
