@@ -31,6 +31,10 @@ import mongoose from 'mongoose';
  * @property {string} pickupStatus - Pickup status: WAITING, PICKED_UP, DROPPED_OFF (default: WAITING)
  * @property {Date} [pickedUpAt] - Timestamp when marked as picked up
  * @property {Date} [droppedOffAt] - Timestamp when marked as dropped off
+ * @property {Object} [suggestedPickupZone] - Nearby smart pickup zone suggestion
+ * @property {ObjectId} suggestedPickupZone.zoneId - Reference to SmartPickupZone
+ * @property {number} suggestedPickupZone.distance - Distance in meters from original pickup
+ * @property {boolean} suggestedPickupZone.isAccepted - Whether passenger accepted the suggestion
  * @property {Date} createdAt - Request creation timestamp
  * @property {Date} updatedAt - Last update timestamp
  * 
@@ -151,6 +155,20 @@ const rideRequestSchema = new mongoose.Schema({
   },
   droppedOffAt: {
     type: Date
+  },
+  suggestedPickupZone: {
+    zoneId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'SmartPickupZone'
+    },
+    distance: {
+      type: Number, // distance in meters
+      min: 0
+    },
+    isAccepted: {
+      type: Boolean,
+      default: false
+    }
   },
   createdAt: {
     type: Date,

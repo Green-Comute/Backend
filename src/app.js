@@ -13,6 +13,7 @@ import adminDriverRoutes from "./routes/adminDriver.routes.js";
 import tripRoutes from "./routes/tripRoutes.js";
 import rideRoutes from "./routes/rideRoutes.js";
 import mockTripRoutes from "./routes/mockTrip.routes.js";
+import smartPickupZoneRoutes from "./routes/smartPickupZone.routes.js";
 
 // Epic-4 Routes (Gamification & Rewards)
 import gamificationRoutes from "./routes/gamification.routes.js";
@@ -37,6 +38,7 @@ app.use("/driver", driverRoutes);
 // Epic-2 Routes (Trip/Ride functionality)
 app.use("/api", tripRoutes);
 app.use("/api", rideRoutes);
+app.use("/api/pickup-zones", smartPickupZoneRoutes);
 
 // Epic-4 Routes (Gamification & Rewards)
 app.use("/api/gamification", gamificationRoutes);
