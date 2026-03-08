@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: greencommute_app
+    ports:
+      - "5000:5000"
+    environment:
+      - PORT=5000
+      - NODE_ENV=development
+      - MONGODB_URI=mongodb://mongodb:27017/greencommute
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=development_secret_key_change_in_production
+      - FRONTEND_URL=http://localhost:5173
+    depends_on:
+      - mongodb
+      - redis
+    volumes:
+      - ./src:/app/src
+      - ./uploads:/app/uploads
+    # In dev mode we override the dockerfile start command to use nodemon
+    command: npm run dev
+
+  mongodb:
+    image: mongo:6.0
+    container_name: greencommute_mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    restart: always
+
+  redis:
+    image: redis:7.0-alpine
+    container_name: greencommute_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: always
+
+volumes:
+  mongodb_data:
+  redis_data:

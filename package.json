@@ -9,6 +9,7 @@
     "test": "cross-env NODE_OPTIONS=--experimental-vm-modules jest",
     "test:watch": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --watch",
     "test:coverage": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --coverage",
+    "test:integration": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --config jest.integration.config.js -i --forceExit",
     "lint": "eslint src",
     "prepare": "husky",
     "seed:pickup-zones": "node seedPickupZones.js"
@@ -23,10 +24,15 @@
     "cors": "^2.8.6",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.3.0",
+    "express-validator": "^7.3.1",
+    "ioredis": "^5.10.0",
+    "joi": "^18.0.2",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.1.5",
     "multer": "^2.0.2",
     "nodemailer": "^8.0.1",
+    "rate-limit-redis": "^4.3.1",
     "socket.io": "^4.8.3"
   },
   "devDependencies": {
@@ -36,8 +42,10 @@
     "eslint": "^9.39.2",
     "globals": "^17.2.0",
     "husky": "^9.0.11",
+    "ioredis-mock": "^8.13.1",
     "jest": "^30.2.0",
     "lint-staged": "^15.2.0",
+    "mongodb-memory-server": "^11.0.1",
     "sinon": "^21.0.1",
     "supertest": "^7.2.2"
   },

@@ -6,6 +6,7 @@ import {
 } from "@simplewebauthn/server";
 import User from "../models/User.js";
 import { generateToken } from "../services/token.service.js";
+import redisClient from "../config/redis.js";
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 // rpID must match the domain serving the app (localhost for dev)
@@ -13,9 +14,8 @@ const RP_ID = process.env.RP_ID || "localhost";
 const RP_NAME = process.env.RP_NAME || "GreenCommute";
 const ORIGIN = process.env.FRONTEND_URL || "http://localhost:5173";
 
-// Temporary in-memory challenge store keyed by userId (string)
-// For production, store in DB or Redis with a short TTL
-const challengeStore = new Map();
+// Store in Redis with a 5-minute TTL
+const CHALLENGE_TTL = 300;
 
 // ─── Register: Step 1 ────────────────────────────────────────────────────────
 /**
@@ -49,7 +49,7 @@ export const getRegisterOptions = async (req, res) => {
         });
 
         // Store challenge temporarily, keyed by userId
-        challengeStore.set(user._id.toString(), options.challenge);
+        await redisClient.setex(`passkey_reg_${user._id.toString()}`, CHALLENGE_TTL, options.challenge);
 
         return res.json(options);
     } catch (err) {
@@ -69,7 +69,7 @@ export const verifyRegister = async (req, res) => {
         const user = await User.findById(req.user.userId);
         if (!user) return res.status(404).json({ message: "User not found" });
 
-        const expectedChallenge = challengeStore.get(user._id.toString());
+        const expectedChallenge = await redisClient.get(`passkey_reg_${user._id.toString()}`);
         if (!expectedChallenge) {
             return res.status(400).json({ message: "No pending challenge. Request registration options first." });
         }
@@ -88,7 +88,7 @@ export const verifyRegister = async (req, res) => {
         }
 
         // Clean up challenge
-        challengeStore.delete(user._id.toString());
+        await redisClient.del(`passkey_reg_${user._id.toString()}`);
 
         if (!verification.verified || !verification.registrationInfo) {
             return res.status(400).json({ message: "Registration verification failed" });
@@ -150,7 +150,7 @@ export const getLoginOptions = async (req, res) => {
         });
 
         // Store challenge keyed by userId
-        challengeStore.set(user._id.toString(), options.challenge);
+        await redisClient.setex(`passkey_login_${user._id.toString()}`, CHALLENGE_TTL, options.challenge);
 
         // Also embed the userId in response so the client sends it back
         return res.json({ ...options, userId: user._id.toString() });
@@ -175,7 +175,7 @@ export const verifyLogin = async (req, res) => {
         const user = await User.findById(userId);
         if (!user) return res.status(404).json({ message: "User not found" });
 
-        const expectedChallenge = challengeStore.get(userId);
+        const expectedChallenge = await redisClient.get(`passkey_login_${userId}`);
         if (!expectedChallenge) {
             return res.status(400).json({ message: "No pending challenge. Request login options first." });
         }
@@ -208,7 +208,7 @@ export const verifyLogin = async (req, res) => {
         }
 
         // Clean up challenge
-        challengeStore.delete(userId);
+        await redisClient.del(`passkey_login_${userId}`);
 
         if (!verification.verified) {
             return res.status(401).json({ message: "Authentication failed" });
