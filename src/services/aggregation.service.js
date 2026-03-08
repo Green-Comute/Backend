@@ -9,6 +9,7 @@
 import mongoose from 'mongoose';
 import Trip from '../models/Trip.js';
 import RideRequest from '../models/RideRequest.js';
+import { SOLO_EMISSION_FACTOR_KG_PER_KM, KG_CO2_PER_TREE_PER_YEAR } from '../config/esgConstants.js';
 
 const toObjectId = (id) => new mongoose.Types.ObjectId(String(id));
 
@@ -187,6 +188,8 @@ export const getOrgImpact = async (organizationId) => {
  */
 export const getTopCommutePartners = async (driverId, limit = 5) => {
   const pipeline = [
+    // Pre-filter to only APPROVED ride requests before joining trips (performance optimisation)
+    { $match: { status: 'APPROVED' } },
     // Only approved rides on this driver's trips
     {
       $lookup: {
@@ -222,7 +225,7 @@ export const getTopCommutePartners = async (driverId, limit = 5) => {
         as: 'user',
       },
     },
-    { $unwind: { path: '$user', preserveNullAndEmpty: true } },
+    { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },
     {
       $project: {
         _id: 0,
@@ -306,7 +309,7 @@ export const getGlobalImpact = async () => {
           as: 'org',
         },
       },
-      { $unwind: { path: '$org', preserveNullAndEmpty: true } },
+      { $unwind: { path: '$org', preserveNullAndEmptyArrays: true } },
       {
         $project: {
           _id: 0,
@@ -373,8 +376,8 @@ export const getPassengerLifetimeImpact = async (userId) => {
         totalRides:              { $sum: 1 },
         totalDistanceKm:         { $sum: { $ifNull: ['$trip.distanceKm', 0] } },
         // CO2 saved = what they would have emitted driving solo
-        // SOLO_EMISSION_FACTOR = 0.21 kg CO2/km
-        totalCo2SavedKg:         { $sum: { $multiply: [{ $ifNull: ['$trip.distanceKm', 0] }, 0.21] } },
+        // Uses SOLO_EMISSION_FACTOR_KG_PER_KM from esgConstants.js
+        totalCo2SavedKg:         { $sum: { $multiply: [{ $ifNull: ['$trip.distanceKm', 0] }, SOLO_EMISSION_FACTOR_KG_PER_KM] } },
         // fuelCostSavingsINR on the trip is already per-person (divided by seatsOccupied)
         totalFuelCostSavingsINR: { $sum: { $ifNull: ['$trip.fuelCostSavingsINR', 0] } },
       },
@@ -385,8 +388,8 @@ export const getPassengerLifetimeImpact = async (userId) => {
         totalRides:              1,
         totalDistanceKm:         { $round: ['$totalDistanceKm', 2] },
         totalCo2SavedKg:         { $round: ['$totalCo2SavedKg', 4] },
-        // trees = co2SavedKg / 21 (US Forest Service 2025)
-        totalTreesEquivalent:    { $round: [{ $divide: ['$totalCo2SavedKg', 21] }, 4] },
+        // trees = co2SavedKg / KG_CO2_PER_TREE_PER_YEAR (US Forest Service 2025)
+        totalTreesEquivalent:    { $round: [{ $divide: ['$totalCo2SavedKg', KG_CO2_PER_TREE_PER_YEAR] }, 4] },
         totalFuelCostSavingsINR: { $round: ['$totalFuelCostSavingsINR', 2] },
       },
     },

@@ -117,7 +117,9 @@ const tripSchema = new mongoose.Schema({
       values: FUEL_TYPES,
       message: '{VALUE} is not a valid fuel type'
     },
-    required: [true, 'Fuel type is required']
+    // Optional to avoid breaking existing trips that lack this field.
+    // New trips without an explicit fuelType will default to the first configured fuel type.
+    default: FUEL_TYPES[0]
   },
   totalSeats: {
     type: Number,

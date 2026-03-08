@@ -42,7 +42,7 @@ export const exportEsgCsv = async (req, res) => {
     res.setHeader('X-Record-Count', recordCount);
     return res.status(200).send(csv);
   } catch (err) {
-    if (err.message?.includes('date range') || err.message?.includes('Date') || err.message?.includes('invalid')) {
+    if (err.status === 400) {
       return res.status(400).json({ success: false, message: err.message });
     }
     console.error('[export.controller] exportEsgCsv error:', err);
@@ -85,7 +85,7 @@ export const exportEsgPdf = async (req, res) => {
     res.setHeader('X-Record-Count', recordCount);
     return res.status(200).send(content);
   } catch (err) {
-    if (err.message?.includes('date range') || err.message?.includes('Date') || err.message?.includes('invalid')) {
+    if (err.status === 400) {
       return res.status(400).json({ success: false, message: err.message });
     }
     console.error('[export.controller] exportEsgPdf error:', err);

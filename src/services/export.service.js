@@ -8,6 +8,7 @@
  * @module services/export.service
  */
 
+import mongoose from 'mongoose';
 import Trip from '../models/Trip.js';
 import { ESG_EXPORT_MAX_DAYS } from '../config/esgConstants.js';
 
@@ -24,13 +25,16 @@ export const validateExportDateRange = (startDate, endDate) => {
   const start = new Date(startDate);
   const end   = new Date(endDate);
 
-  if (isNaN(start.getTime())) throw new Error('startDate is invalid');
-  if (isNaN(end.getTime()))   throw new Error('endDate is invalid');
-  if (start > end)            throw new Error('startDate must be before endDate');
+  if (isNaN(start.getTime())) throw Object.assign(new Error('startDate is invalid'), { status: 400 });
+  if (isNaN(end.getTime()))   throw Object.assign(new Error('endDate is invalid'), { status: 400 });
+  if (start > end)            throw Object.assign(new Error('startDate must be before endDate'), { status: 400 });
 
   const diffDays = (end - start) / (1000 * 60 * 60 * 24);
   if (diffDays > ESG_EXPORT_MAX_DAYS) {
-    throw new Error(`Export date range cannot exceed ${ESG_EXPORT_MAX_DAYS} days (1 year). Requested: ${Math.ceil(diffDays)} days.`);
+    throw Object.assign(
+      new Error(`Export date range cannot exceed ${ESG_EXPORT_MAX_DAYS} days (1 year). Requested: ${Math.ceil(diffDays)} days.`),
+      { status: 400 }
+    );
   }
 };
 
@@ -54,12 +58,24 @@ const fetchTripsForExport = async ({ organizationId, startDate, endDate, driverI
     createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) },
   };
 
-  if (driverId)        matchStage.driverId = driverId;
+  if (driverId) {
+    try {
+      matchStage.driverId = new mongoose.Types.ObjectId(driverId);
+    } catch {
+      throw Object.assign(new Error('driverId is invalid'), { status: 400 });
+    }
+  }
 
   let pipeline = [{ $match: matchStage }];
 
   // Org-scope filter via join
   if (organizationId) {
+    let orgObjectId;
+    try {
+      orgObjectId = new mongoose.Types.ObjectId(organizationId);
+    } catch {
+      throw Object.assign(new Error('organizationId is invalid'), { status: 400 });
+    }
     pipeline = [
       {
         $lookup: {
@@ -72,7 +88,7 @@ const fetchTripsForExport = async ({ organizationId, startDate, endDate, driverI
       { $unwind: '$_driver' },
       {
         $match: {
-          '_driver.organizationId': organizationId,
+          '_driver.organizationId': orgObjectId,
           ...matchStage,
         },
       },
@@ -107,16 +123,21 @@ const CSV_COLUMNS = [
 
 /**
  * Escape a CSV cell value.
+ * Prefixes cells starting with formula-injection characters (=, +, -, @) with a tab
+ * to prevent spreadsheet applications from interpreting them as formulas.
  * @param {*} value
  * @returns {string}
  */
 const escapeCsvCell = (value) => {
   if (value === null || value === undefined) return '';
   const str = String(value);
-  if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-    return `"${str.replace(/"/g, '""')}"`;
+  // Guard against CSV formula injection (Excel / Google Sheets / LibreOffice)
+  // OWASP recommends prefixing with a single quote to neutralise formula characters.
+  const sanitized = /^[=+\-@]/.test(str) ? `'${str}` : str;
+  if (sanitized.includes(',') || sanitized.includes('"') || sanitized.includes('\n')) {
+    return `"${sanitized.replace(/"/g, '""')}"`;
   }
-  return str;
+  return sanitized;
 };
 
 /**

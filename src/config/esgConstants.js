@@ -44,8 +44,9 @@ export const KG_CO2_PER_TREE_PER_YEAR = 21;
 /**
  * Emission factor for a solo driver in a conventional vehicle (kg CO2/km).
  * Used as the baseline for carpool savings comparison.
+ * Intentionally references CONVENTIONAL_EMISSION_FACTOR_KG_PER_KM to avoid drift.
  */
-export const SOLO_EMISSION_FACTOR_KG_PER_KM = 0.21;
+export const SOLO_EMISSION_FACTOR_KG_PER_KM = CONVENTIONAL_EMISSION_FACTOR_KG_PER_KM;
 
 // ─── Route Efficiency Score ───────────────────────────────────────────────────
 /**

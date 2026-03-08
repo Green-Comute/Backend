@@ -49,7 +49,9 @@ export const getTripImpactModal = async (req, res) => {
         maintenanceSavingsINR: trip.maintenanceSavingsINR,
       };
     } else if (trip.distanceKm && trip.fuelType) {
-      const seatsOccupied = (trip.totalSeats ?? 1) - (trip.availableSeats ?? 0) || 1;
+      // seatsOccupied: total passengers + driver, with a minimum of 1
+      const passengerCount = (trip.totalSeats ?? 1) - (trip.availableSeats ?? 0);
+      const seatsOccupied = Math.max(1, (passengerCount || 0) + 1);
       esg = computeAllTripEsgMetrics({
         distanceKm:   trip.distanceKm,
         fuelType:     trip.fuelType,
