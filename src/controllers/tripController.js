@@ -1128,8 +1128,9 @@ export const completeTrip = async (req, res) => {
     // ── Epic 3: Compute & persist ESG metrics on completion ──────────────────
     if (trip.distanceKm && trip.fuelType) {
       try {
-        const seatsOccupied =
-          (trip.totalSeats ?? 1) - (trip.availableSeats ?? 0) || 1;
+        // seatsOccupied: total passengers + driver, with a minimum of 1
+        const passengerCount = (trip.totalSeats ?? 1) - (trip.availableSeats ?? 0);
+        const seatsOccupied = Math.max(1, (passengerCount || 0) + 1);
         const esg = computeAllTripEsgMetrics({
           distanceKm:   trip.distanceKm,
           fuelType:     trip.fuelType,
