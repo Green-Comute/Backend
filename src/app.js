@@ -15,6 +15,12 @@ import { globalLimiter, authLimiter } from "./middlewares/rateLimiter.middleware
 // Epic-2 Routes (new trip/ride functionality)
 import tripRoutes from "./routes/tripRoutes.js";
 import rideRoutes from "./routes/rideRoutes.js";
+
+// Epic-3 Routes (Carbon calculation + ESG Impact Intelligence)
+import carbonRoutes from "./routes/carbon.routes.js";
+import impactRoutes from "./routes/impact.routes.js";
+import esgAdminRoutes from "./routes/esgAdmin.routes.js";
+import exportRoutes from "./routes/export.routes.js";
 import mockTripRoutes from "./routes/mockTrip.routes.js";
 import smartPickupZoneRoutes from "./routes/smartPickupZone.routes.js";
 
@@ -60,6 +66,12 @@ app.use("/driver", driverRoutes);
 app.use("/api", tripRoutes);
 app.use("/api", rideRoutes);
 app.use("/api/pickup-zones", smartPickupZoneRoutes);
+
+// Epic-3 Routes (Carbon calculation + ESG Impact Intelligence)
+app.use("/api/carbon", carbonRoutes);
+app.use("/api/impact", impactRoutes);
+app.use("/api/esg-admin", esgAdminRoutes);
+app.use("/api/export", exportRoutes);
 
 // Epic-4 Routes (Gamification & Rewards)
 app.use("/api/gamification", gamificationRoutes);

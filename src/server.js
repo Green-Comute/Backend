@@ -5,6 +5,10 @@ dotenv.config();
 
 import app from "./app.js";
 import connectDB from "./config/db.js";
+import { validateFuelTypesConfig } from "./config/fuelTypes.js";
+
+// Fail fast if fuel types are misconfigured
+validateFuelTypesConfig();
 import setupRideSocket from "./sockets/rideSocket.js";
 import setupTrackingSocket from "./sockets/trackingSocket.js";
 import { setIO } from "./config/socket.js";

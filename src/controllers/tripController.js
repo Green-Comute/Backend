@@ -1,6 +1,9 @@
 import Trip from '../models/Trip.js';
 import RideRequest from '../models/RideRequest.js';
 import { getIO } from '../config/socket.js';
+import { calculateCo2Saved } from '../services/carbon.service.js';
+import { FUEL_TYPES } from '../config/fuelTypes.js';
+import { computeAllTripEsgMetrics } from '../services/esgCalculation.service.js';
 import { optimizeRoute, validateRouteInput } from '../services/routeOptimization.service.js';
 
 /**
@@ -124,13 +127,28 @@ export const createTrip = async (req, res) => {
       });
     }
 
-    const { vehicleType, totalSeats, scheduledTime, source, destination, sourceLocation, destinationLocation, waypoints } = req.body;
+    const { vehicleType, totalSeats, scheduledTime, source, destination, sourceLocation, destinationLocation, distanceKm, conventionalEmissionFactor, sustainableEmissionFactor, fuelType, waypoints } = req.body;
 
     // Validate required fields
     if (!source || !destination || !scheduledTime || !vehicleType || !totalSeats) {
       return res.status(400).json({
         success: false,
         message: 'All fields are required: source, destination, scheduledTime, vehicleType, totalSeats'
+      });
+    }
+
+    // Validate fuelType
+    if (!fuelType) {
+      return res.status(400).json({
+        success: false,
+        message: 'Fuel type is required'
+      });
+    }
+
+    if (!FUEL_TYPES.includes(fuelType)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid fuel type. Allowed values: ${FUEL_TYPES.join(', ')}`
       });
     }
 
@@ -189,6 +207,7 @@ export const createTrip = async (req, res) => {
       driverId: req.user.userId,
       organizationId: req.user.organizationId || null, // Epic-4
       vehicleType,
+      fuelType,
       totalSeats: parseInt(totalSeats),
       availableSeats: parseInt(totalSeats),
       scheduledTime: tripScheduledTime,
@@ -296,6 +315,29 @@ export const createTrip = async (req, res) => {
             coordinates: [sourceCoords, destCoords]
           };
         }
+      }
+    }
+
+    // Calculate CO2 saved if distanceKm and emission factors are provided
+    if (distanceKm !== undefined && conventionalEmissionFactor !== undefined && sustainableEmissionFactor !== undefined) {
+      try {
+        const carbonResult = calculateCo2Saved({
+          distanceKm,
+          conventionalEmissionFactor,
+          sustainableEmissionFactor
+        });
+        tripData.distanceKm = carbonResult.distanceKm;
+        tripData.co2SavedKg = carbonResult.co2SavedKg;
+        console.log(`[tripController] CO2 saved for new trip: ${carbonResult.co2SavedKg} kg over ${carbonResult.distanceKm} km`);
+      } catch (carbonError) {
+        // Non-fatal: log and continue without CO2 data
+        console.error('[tripController] CO2 calculation failed, proceeding without it:', carbonError.message);
+      }
+    } else if (distanceKm !== undefined) {
+      // Store distance even if emission factors are absent
+      const parsedDist = Number(distanceKm);
+      if (!isNaN(parsedDist) && parsedDist > 0) {
+        tripData.distanceKm = parsedDist;
       }
     }
 
@@ -425,6 +467,7 @@ export const searchTrips = async (req, res) => {
       const baseQuery = {
         status: 'SCHEDULED',
         availableSeats: { $gt: 0 },
+        scheduledTime: { $gte: new Date() },  // Only future trips
         'sourceLocation.coordinates.coordinates': { $exists: true, $ne: [0, 0] },
         'destinationLocation.coordinates.coordinates': { $exists: true, $ne: [0, 0] }
       };
@@ -519,6 +562,7 @@ export const searchTrips = async (req, res) => {
       const query = {
         status: 'SCHEDULED',
         availableSeats: { $gt: 0 },
+        scheduledTime: { $gte: new Date() },  // Only future trips
         source: { $regex: source, $options: 'i' },
         destination: { $regex: destination, $options: 'i' }
       };
@@ -600,10 +644,33 @@ export const getDriverTrips = async (req, res) => {
       .populate('driverId', 'name email')
       .sort({ scheduledTime: -1 });
 
+    if (trips.length === 0) {
+      return res.status(200).json({ success: true, count: 0, trips: [] });
+    }
+
+    // Get pending ride-request counts for all driver trips in one query
+    const tripIds = trips.map(t => t._id);
+    const pendingCounts = await RideRequest.aggregate([
+      { $match: { tripId: { $in: tripIds }, status: 'PENDING' } },
+      { $group: { _id: '$tripId', count: { $sum: 1 } } }
+    ]);
+
+    // Build a lookup map: tripId string -> pending count
+    const pendingCountMap = {};
+    pendingCounts.forEach(({ _id, count }) => {
+      pendingCountMap[_id.toString()] = count;
+    });
+
+    // Attach pendingRequestCount to each trip plain object
+    const tripsWithCounts = trips.map(trip => ({
+      ...trip.toObject(),
+      pendingRequestCount: pendingCountMap[trip._id.toString()] || 0
+    }));
+
     res.status(200).json({
       success: true,
-      count: trips.length,
-      trips: trips
+      count: tripsWithCounts.length,
+      trips: tripsWithCounts
     });
 
   } catch (error) {
@@ -1059,6 +1126,52 @@ export const completeTrip = async (req, res) => {
 
     trip.status = 'COMPLETED';
     trip.actualEndTime = new Date();
+
+    // ── Auto-calculate distance if not set ────────────────────────────────────
+    if (!trip.distanceKm && trip.sourceLocation?.coordinates?.coordinates && trip.destinationLocation?.coordinates?.coordinates) {
+      try {
+        const [srcLng, srcLat] = trip.sourceLocation.coordinates.coordinates;
+        const [destLng, destLat] = trip.destinationLocation.coordinates.coordinates;
+        
+        // Haversine formula for distance (in km)
+        const R = 6371; // Earth's radius in km
+        const dLat = (destLat - srcLat) * Math.PI / 180;
+        const dLng = (destLng - srcLng) * Math.PI / 180;
+        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                  Math.cos(srcLat * Math.PI / 180) * Math.cos(destLat * Math.PI / 180) *
+                  Math.sin(dLng / 2) * Math.sin(dLng / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        trip.distanceKm = Math.round(R * c * 100) / 100; // Round to 2 decimal places
+        console.log(`[tripController] Auto-calculated distance: ${trip.distanceKm} km`);
+      } catch (distErr) {
+        console.warn('[tripController] Distance calculation failed:', distErr.message);
+      }
+    }
+
+    // ── Epic 3: Compute & persist ESG metrics on completion ──────────────────
+    if (trip.distanceKm && trip.fuelType) {
+      try {
+        // seatsOccupied: total passengers + driver, with a minimum of 1
+        const passengerCount = (trip.totalSeats ?? 1) - (trip.availableSeats ?? 0);
+        const seatsOccupied = Math.max(1, (passengerCount || 0) + 1);
+        const esg = computeAllTripEsgMetrics({
+          distanceKm:   trip.distanceKm,
+          fuelType:     trip.fuelType,
+          co2SavedKg:   trip.co2SavedKg ?? 0,
+          seatsOccupied,
+        });
+        trip.treesEquivalent       = esg.treesEquivalent;
+        trip.soloBaselineCo2Kg     = esg.soloBaselineCo2Kg;
+        trip.carpoolSavingsKg      = esg.carpoolSavingsKg;
+        trip.routeEfficiencyScore  = esg.routeEfficiencyScore;
+        trip.idleEmissionsKg       = esg.idleEmissionsKg;
+        trip.fuelCostSavingsINR    = esg.fuelCostSavingsINR;
+        trip.maintenanceSavingsINR = esg.maintenanceSavingsINR;
+      } catch (esgErr) {
+        console.warn('[tripController] ESG metric computation failed (non-fatal):', esgErr.message);
+      }
+    }
+
     await trip.save();
 
     res.status(200).json({

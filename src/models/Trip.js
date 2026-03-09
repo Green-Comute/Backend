@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { FUEL_TYPES } from '../config/fuelTypes.js';
 
 /**
  * @fileoverview Trip Model
@@ -109,6 +110,16 @@ const tripSchema = new mongoose.Schema({
       message: '{VALUE} is not a valid vehicle type'
     },
     required: [true, 'Vehicle type is required']
+  },
+  fuelType: {
+    type: String,
+    enum: {
+      values: FUEL_TYPES,
+      message: '{VALUE} is not a valid fuel type'
+    },
+    // Optional to avoid breaking existing trips that lack this field.
+    // New trips without an explicit fuelType will default to the first configured fuel type.
+    default: FUEL_TYPES[0]
   },
   totalSeats: {
     type: Number,
@@ -246,6 +257,53 @@ const tripSchema = new mongoose.Schema({
   },
   actualEndTime: {
     type: Date
+  },
+  distanceKm: {
+    type: Number,
+    default: null,
+    min: [0, 'Distance cannot be negative']
+  },
+  co2SavedKg: {
+    type: Number,
+    default: null,
+    min: [0, 'CO2 saved cannot be negative']
+  },
+  // ── Epic 3 ESG Impact Fields ──────────────────────────────────────────────
+  treesEquivalent: {
+    type: Number,
+    default: null,
+    min: [0, 'Trees equivalent cannot be negative']
+  },
+  soloBaselineCo2Kg: {
+    type: Number,
+    default: null,
+    min: [0, 'Solo baseline CO2 cannot be negative']
+  },
+  carpoolSavingsKg: {
+    type: Number,
+    default: null,
+    min: [0, 'Carpool CO2 savings cannot be negative']
+  },
+  routeEfficiencyScore: {
+    type: Number,
+    default: null,
+    min: [1, 'Route efficiency score minimum is 1'],
+    max: [5, 'Route efficiency score maximum is 5']
+  },
+  idleEmissionsKg: {
+    type: Number,
+    default: null,
+    min: [0, 'Idle emissions cannot be negative']
+  },
+  fuelCostSavingsINR: {
+    type: Number,
+    default: null,
+    min: [0, 'Fuel cost savings cannot be negative']
+  },
+  maintenanceSavingsINR: {
+    type: Number,
+    default: null,
+    min: [0, 'Maintenance savings cannot be negative']
   },
   // Legacy fields for backward compatibility with geo-based queries
   seatsAvailable: {
