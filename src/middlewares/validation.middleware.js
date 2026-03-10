@@ -1,4 +1,5 @@
 import Joi from 'joi';
+import { FUEL_TYPES } from '../config/fuelTypes.js';
 
 /**
  * Reusable validation middleware using Joi
@@ -49,19 +50,27 @@ export const schemas = {
         newPassword: Joi.string().min(8).required()
     }),
 
-    // Trip
+    // Trip — matches tripController.createTrip expectations
     createTrip: Joi.object({
-        source: Joi.object({
-            lat: Joi.number().required(),
-            lng: Joi.number().required()
-        }).required(),
-        destination: Joi.object({
-            lat: Joi.number().required(),
-            lng: Joi.number().required()
-        }).required(),
+        source: Joi.string().required(),
+        destination: Joi.string().required(),
         vehicleType: Joi.string().valid('CAR', 'BIKE').required(),
         totalSeats: Joi.number().integer().min(1).max(10).required(),
         scheduledTime: Joi.date().iso().required(),
+        fuelType: Joi.string().valid(...FUEL_TYPES).required(),
+        sourceLocation: Joi.object({
+            lat: Joi.number().required(),
+            lng: Joi.number().required(),
+            address: Joi.string().optional()
+        }).optional(),
+        destinationLocation: Joi.object({
+            lat: Joi.number().required(),
+            lng: Joi.number().required(),
+            address: Joi.string().optional()
+        }).optional(),
+        distanceKm: Joi.number().positive().optional(),
+        conventionalEmissionFactor: Joi.number().optional(),
+        sustainableEmissionFactor: Joi.number().optional(),
         waypoints: Joi.array().items(
             Joi.object({
                 lat: Joi.number().required(),

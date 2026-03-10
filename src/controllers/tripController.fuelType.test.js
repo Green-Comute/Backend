@@ -74,7 +74,9 @@ describe('Fuel Type - Integration Tests (POST /api/trips)', () => {
 
       expect(response.status).toBe(400);
       expect(response.body.success).toBe(false);
-      expect(response.body.message).toMatch(/fuel type is required/i);
+      // Joi validation middleware catches missing required fuelType
+      expect(response.body.message).toBe('Input validation failed');
+      expect(response.body.errors.some(e => e.includes('fuelType'))).toBe(true);
     });
 
     test('should return 400 when fuelType is null', async () => {
@@ -110,7 +112,9 @@ describe('Fuel Type - Integration Tests (POST /api/trips)', () => {
 
       expect(response.status).toBe(400);
       expect(response.body.success).toBe(false);
-      expect(response.body.message).toMatch(/invalid fuel type/i);
+      // Joi validation middleware catches invalid fuelType value
+      expect(response.body.message).toBe('Input validation failed');
+      expect(response.body.errors.some(e => e.includes('fuelType'))).toBe(true);
     });
 
     test('should return 400 for lowercase fuelType (case sensitivity)', async () => {
@@ -140,9 +144,9 @@ describe('Fuel Type - Integration Tests (POST /api/trips)', () => {
         .send({ ...validTripBody(), fuelType: 'GASOLINE' });
 
       expect(response.status).toBe(400);
-      // Message should contain allowed values
-      expect(response.body.message).toMatch(/PETROL/);
-      expect(response.body.message).toMatch(/DIESEL/);
+      // Joi validates fuelType against allowed values
+      expect(response.body.message).toBe('Input validation failed');
+      expect(response.body.errors).toBeDefined();
     });
   });
 

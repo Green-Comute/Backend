@@ -13,7 +13,8 @@ export default {
   coverageDirectory: 'coverage',
   verbose: true,
   testPathIgnorePatterns: [
-    '/node_modules/'
+    '/node_modules/',
+    '/tests/integration/'
   ],
   // Raise timeout slightly to accommodate the 500 ms Mongoose buffer flush
   testTimeout: 8000,

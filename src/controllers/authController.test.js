@@ -21,7 +21,9 @@ describe('Authentication API - Basic Tests', () => {
         });
 
       expect(response.status).toBe(400);
-      expect(response.body.message).toBe('All fields are required');
+      expect(response.body.success).toBe(false);
+      expect(response.body.message).toBe('Input validation failed');
+      expect(response.body.errors).toBeDefined();
     });
 
     test('should reject registration with missing phone', async () => {
@@ -34,7 +36,9 @@ describe('Authentication API - Basic Tests', () => {
         });
 
       expect(response.status).toBe(400);
-      expect(response.body.message).toBe('All fields are required');
+      expect(response.body.success).toBe(false);
+      expect(response.body.message).toBe('Input validation failed');
+      expect(response.body.errors).toBeDefined();
     });
 
     test('should reject registration with missing password', async () => {
@@ -47,7 +51,9 @@ describe('Authentication API - Basic Tests', () => {
         });
 
       expect(response.status).toBe(400);
-      expect(response.body.message).toBe('All fields are required');
+      expect(response.body.success).toBe(false);
+      expect(response.body.message).toBe('Input validation failed');
+      expect(response.body.errors).toBeDefined();
     });
 
     test('should reject registration with missing orgCode', async () => {
@@ -60,10 +66,12 @@ describe('Authentication API - Basic Tests', () => {
         });
 
       expect(response.status).toBe(400);
-      expect(response.body.message).toBe('All fields are required');
+      expect(response.body.success).toBe(false);
+      expect(response.body.message).toBe('Input validation failed');
+      expect(response.body.errors).toBeDefined();
     });
 
-    test('should reject weak password - too short (requires OTP first)', async () => {
+    test('should reject weak password - too short (Joi catches min 8)', async () => {
       const response = await request(app)
         .post('/auth/register')
         .send({
@@ -75,8 +83,10 @@ describe('Authentication API - Basic Tests', () => {
         });
 
       expect(response.status).toBe(400);
-      // OTP verification fails before password check is reached
-      expect(response.body.message).toContain('Invalid or expired verification code');
+      // Joi validation catches min(8) password requirement before controller runs
+      expect(response.body.success).toBe(false);
+      expect(response.body.message).toBe('Input validation failed');
+      expect(response.body.errors.some(e => e.includes('password'))).toBe(true);
     });
 
     test('should reject registration with missing otp', async () => {
@@ -90,13 +100,15 @@ describe('Authentication API - Basic Tests', () => {
         });
 
       expect(response.status).toBe(400);
-      expect(response.body.message).toBe('All fields are required');
+      expect(response.body.success).toBe(false);
+      expect(response.body.message).toBe('Input validation failed');
+      expect(response.body.errors).toBeDefined();
     });
   });
 
   describe('POST /auth/login - User Login', () => {
 
-    test('should reject login with missing email', async () => {
+    test('should reject login with missing email and phone', async () => {
       const response = await request(app)
         .post('/auth/login')
         .send({
@@ -104,7 +116,9 @@ describe('Authentication API - Basic Tests', () => {
         });
 
       expect(response.status).toBe(400);
-      expect(response.body.message).toContain('Email and password required');
+      // Joi requires at least email or phone via .or('email', 'phone')
+      expect(response.body.success).toBe(false);
+      expect(response.body.message).toBe('Input validation failed');
     });
 
     test('should reject login with missing password', async () => {
@@ -115,7 +129,9 @@ describe('Authentication API - Basic Tests', () => {
         });
 
       expect(response.status).toBe(400);
-      expect(response.body.message).toContain('Email and password required');
+      // Joi catches missing required password field
+      expect(response.body.success).toBe(false);
+      expect(response.body.message).toBe('Input validation failed');
     });
 
     test('should reject login with empty credentials', async () => {
@@ -124,7 +140,9 @@ describe('Authentication API - Basic Tests', () => {
         .send({});
 
       expect(response.status).toBe(400);
-      expect(response.body.message).toContain('Email and password required');
+      // Joi catches missing required fields
+      expect(response.body.success).toBe(false);
+      expect(response.body.message).toBe('Input validation failed');
     });
   });
 
