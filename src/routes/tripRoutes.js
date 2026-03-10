@@ -15,6 +15,7 @@ import {
 } from '../controllers/tripController.js';
 import protect from '../middlewares/authMiddleware.js';
 import requireDriver from '../middlewares/driverMiddleware.js';
+import { validate, schemas } from '../middlewares/validation.middleware.js';
 
 /**
  * @fileoverview Trip Management Routes
@@ -38,7 +39,7 @@ const router = express.Router();
  * @apiBody {Object} [sourceLocation] Source coordinates (optional)
  * @apiBody {Object} [destinationLocation] Destination coordinates (optional)
  */
-router.post('/trips', protect, requireDriver, createTrip);
+router.post('/trips', protect, requireDriver, validate(schemas.createTrip), createTrip);
 
 /**
  * @api {get} /api/trips/search Search Trips

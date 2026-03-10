@@ -9,6 +9,9 @@ import userRoutes from "./routes/user.routes.js";
 import driverRoutes from "./routes/driver.routes.js";
 import adminDriverRoutes from "./routes/adminDriver.routes.js";
 
+// Security & Rate Limiting
+import { globalLimiter, authLimiter } from "./middlewares/rateLimiter.middleware.js";
+
 // Epic-2 Routes (new trip/ride functionality)
 import tripRoutes from "./routes/tripRoutes.js";
 import rideRoutes from "./routes/rideRoutes.js";
@@ -29,12 +32,30 @@ import pointRulesRoutes from "./routes/pointRules.routes.js";
 
 const app = express();
 
-// Global middlewares
-app.use(cors());
+// Security: Dynamic CORS configuration (Fix #3)
+const allowedOrigins = process.env.FRONTEND_URL
+  ? process.env.FRONTEND_URL.split(',')
+  : ['http://localhost:5173'];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true
+}));
+
 app.use(express.json());
 
+// Apply global rate limiter to all routes (Fix #2)
+app.use(globalLimiter);
+
 // Epic-1 Routes (Organization-based)
-app.use("/auth", authRoutes);
+// Apply stricter rate limiting to auth routes
+app.use("/auth", authLimiter, authRoutes);
 app.use("/platform", platformRoutes);
 app.use("/org-admin", orgAdminRoutes);
 app.use("/org-admin", adminDriverRoutes);

@@ -7,6 +7,7 @@ import {
     verifyLogin,
 } from "../controllers/passkey.controller.js";
 import { verifyToken } from "../middlewares/auth.middleware.js";
+import { validate, schemas } from "../middlewares/validation.middleware.js";
 
 
 /**
@@ -26,10 +27,10 @@ router.post("/send-otp", sendOtp);
 // ─── Password Auth ────────────────────────────────────────────────────────────
 
 /** POST /auth/register — Register a new employee */
-router.post("/register", registerEmployee);
+router.post("/register", validate(schemas.registerEmployee), registerEmployee);
 
 /** POST /auth/login — Authenticate with email + password */
-router.post("/login", loginUser);
+router.post("/login", validate(schemas.login), loginUser);
 
 /** POST /auth/forgot-password — Send password reset email */
 router.post("/forgot-password", forgotPassword);
