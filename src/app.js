@@ -30,6 +30,14 @@ import rewardsRoutes from "./routes/rewards.routes.js";
 import rewardsAdminRoutes from "./routes/rewardsAdmin.routes.js";
 import pointRulesRoutes from "./routes/pointRules.routes.js";
 
+// Epic-5 Routes (Privacy, Safety & Feedback)
+import ratingRoutes from "./routes/rating.routes.js";
+import safetyRoutes from "./routes/safety.routes.js";
+import tripShareRoutes from "./routes/tripShare.routes.js";
+import privacyRoutes from "./routes/privacy.routes.js";
+import supportRoutes from "./routes/support.routes.js";
+import adminSafetyRoutes from "./routes/adminSafety.routes.js";
+
 const app = express();
 
 // Security: Dynamic CORS configuration (Fix #3)
@@ -78,6 +86,16 @@ app.use("/api/gamification", gamificationRoutes);
 app.use("/api/rewards", rewardsRoutes);
 app.use("/org-admin/rewards", rewardsAdminRoutes);
 app.use("/platform/point-rules", pointRulesRoutes);
+
+// Epic-5 Routes (Privacy, Safety & Feedback)
+app.use("/api/ratings", ratingRoutes);
+app.use("/api/safety", safetyRoutes);
+app.use("/api/trip", tripShareRoutes);
+app.use("/api/privacy", privacyRoutes);
+app.use("/api/support", supportRoutes);
+// Admin routes (incidents + guideline CMS) and user-facing guideline routes
+// all live under /api/admin to keep the namespace consistent.
+app.use("/api/admin", adminSafetyRoutes);
 
 // Mock/Testing Routes
 app.use("/api/mock", mockTripRoutes);
