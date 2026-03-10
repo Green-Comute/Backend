@@ -16,6 +16,8 @@ if (process.env.NODE_ENV === 'test') {
         max: 100,
         standardHeaders: true,
         legacyHeaders: false,
+        // Avoid counting auth requests twice (global + auth limiter).
+        skip: (req) => req.path.startsWith('/auth'),
         store: new RedisStore({
             sendCommand: (...args) => redisClient.call(...args),
         }),
