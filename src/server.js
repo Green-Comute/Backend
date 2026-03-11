@@ -13,6 +13,16 @@ import setupRideSocket from "./sockets/rideSocket.js";
 import setupTrackingSocket from "./sockets/trackingSocket.js";
 import { setIO } from "./config/socket.js";
 
+const cors = require("cors");
+
+app.use(cors({
+  origin: [
+    "http://localhost:5173", 
+    "https://frontend-tau-ecru-80.vercel.app"
+  ],
+  credentials: true
+}));
+
 connectDB();
 
 const PORT = process.env.PORT || 5000;
