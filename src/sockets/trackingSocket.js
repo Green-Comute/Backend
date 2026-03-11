@@ -152,21 +152,28 @@ import { calculateETA } from '../services/etaService.js';
  * ```
  */
 export const setupTrackingSocket = (io) => {
-  // Middleware to authenticate socket connections
+  // Middleware to authenticate socket connections (optional for public tracking)
   io.use((socket, next) => {
     try {
       const token = socket.handshake.auth.token;
       
-      if (!token) {
-        return next(new Error('Authentication token required'));
+      if (token) {
+        // Verify token if provided
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+        socket.userId = decoded.userId;
+        socket.userRole = decoded.role;
+        socket.isPublic = false;
+        console.log(`[Auth] ✅ Socket authenticated - userId: ${socket.userId}, role: ${socket.userRole}`);
+      } else {
+        // Allow public connections (for share link tracking)
+        socket.userId = null;
+        socket.userRole = 'public';
+        socket.isPublic = true;
+        console.log(`[Auth] ✅ Public socket connection allowed (for share links)`);
       }
-
-      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
-      socket.userId = decoded.userId; // JWT payload uses 'userId', not 'id'
-      socket.userRole = decoded.role;
-      console.log(`[Auth] Socket authenticated - userId: ${socket.userId}, role: ${socket.userRole}`);
       next();
-    } catch {
+    } catch (err) {
+      console.error(`[Auth] ❌ Auth error:`, err.message);
       next(new Error('Invalid token'));
     }
   });
@@ -177,15 +184,17 @@ export const setupTrackingSocket = (io) => {
     // Join a specific trip room
     socket.on('joinTrip', async (tripId) => {
       try {
+        console.log(`[joinTrip] 📍 User ${socket.userId || 'PUBLIC'} joining trip ${tripId}`);
         const trip = await Trip.findById(tripId);
         
         if (!trip) {
+          console.error(`[joinTrip] ❌ Trip not found: ${tripId}`);
           socket.emit('error', { message: 'Trip not found' });
           return;
         }
 
         socket.join(`trip:${tripId}`);
-        console.log(`User ${socket.userId} joined trip ${tripId}`);
+        console.log(`[joinTrip] ✅ Successfully joined trip room: trip:${tripId}`);
 
         // Send current trip status
         socket.emit('tripStatus', {
@@ -193,7 +202,8 @@ export const setupTrackingSocket = (io) => {
           status: trip.status,
           currentLocation: trip.currentLocation
         });
-      } catch {
+      } catch (err) {
+        console.error(`[joinTrip] ❌ Error:`, err.message);
         socket.emit('error', { message: 'Failed to join trip' });
       }
     });

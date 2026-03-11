@@ -122,17 +122,22 @@ export const requestRide = async (req, res) => {
       });
     }
 
-    // Check if passenger already has a pending request for this trip
+    // Check if passenger already has an active request for this trip (PENDING or APPROVED or PICKED_UP)
     const existingRequest = await RideRequest.findOne({
       passengerId,
       tripId,
-      status: 'PENDING'
+      status: { $in: ['PENDING', 'APPROVED', 'PICKED_UP'] }
     });
 
     if (existingRequest) {
+      const statusMessages = {
+        PENDING: 'You already have a pending request for this trip',
+        APPROVED: 'You already have an approved ride for this trip',
+        PICKED_UP: 'You are already on this trip'
+      };
       return res.status(400).json({
         success: false,
-        message: 'You already have a pending request for this trip'
+        message: statusMessages[existingRequest.status] || 'You already have an active request for this trip'
       });
     }
 

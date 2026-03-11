@@ -111,10 +111,12 @@ export const setupRideSocket = (io) => {
   // apply auth twice, breaking connections.
 
   io.on('connection', (socket) => {
-    console.log('User connected:', socket.id, 'User ID:', socket.userId);
+    console.log('User connected:', socket.id, 'User ID:', socket.userId, 'Public:', socket.isPublic);
 
-    // Auto-join user to their personal room for notifications
-    socket.join(`user-${socket.userId}`);
+    // Auto-join authenticated users to their personal room for notifications
+    if (socket.userId) {
+      socket.join(`user-${socket.userId}`);
+    }
 
     // Join a trip room for tracking
     socket.on('joinTrip', (tripId) => {
