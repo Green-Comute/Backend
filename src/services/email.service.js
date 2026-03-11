@@ -2,8 +2,7 @@ import nodemailer from "nodemailer";
 
 /**
  * @fileoverview Email Service
- * @description Provides email sending functionality using Gmail SMTP for production
- * or Ethereal Email for development.
+ * @description Provides email sending functionality using Gmail SMTP.
  * @module services/email.service
  */
 
@@ -13,66 +12,41 @@ let isInitialized = false;
 /**
  * Create Email Transporter
  * 
- * @description Initializes Nodemailer transporter with production SMTP or test account.
- * Uses Gmail SMTP in production (via environment variables) or Ethereal for testing.
+ * @description Initializes Nodemailer transporter with Gmail SMTP.
+ * Requires EMAIL_USER and EMAIL_PASSWORD environment variables.
  * 
  * @private
  * @async
- * 
- * @note Production requires EMAIL_USER and EMAIL_PASSWORD environment variables
- * @note For Gmail: use App Password, not regular password
  */
 const createTransporter = async () => {
   if (isInitialized) return;
 
-  // Production: Use real SMTP service
-  if (process.env.EMAIL_USER && process.env.EMAIL_PASSWORD) {
-    transporter = nodemailer.createTransport({
-      service: process.env.EMAIL_SERVICE || 'gmail',
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASSWORD,
-      },
-    });
-    console.log("📧 Production email service ready");
+  // Check if email credentials are configured
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) {
+    console.error("⚠️ EMAIL_USER and EMAIL_PASSWORD must be set in environment variables");
+    console.error("⚠️ Password reset and email features will NOT work");
+    
+    // Create a dummy transporter that throws errors
+    transporter = {
+      sendMail: async () => {
+        throw new Error("Email service not configured. Set EMAIL_USER and EMAIL_PASSWORD environment variables.");
+      }
+    };
     isInitialized = true;
     return;
   }
 
-  // Development: Use Ethereal Email with timeout
-  try {
-    const testAccount = await Promise.race([
-      nodemailer.createTestAccount(),
-      new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Ethereal timeout')), 5000)
-      )
-    ]);
-
-    transporter = nodemailer.createTransport({
-      host: "smtp.ethereal.email",
-      port: 587,
-      auth: {
-        user: testAccount.user,
-        pass: testAccount.pass,
-      },
-    });
-
-    console.log("📧 Ethereal Email ready (development mode)");
-    isInitialized = true;
-  } catch (error) {
-    console.error("⚠️ Email service initialization failed:", error.message);
-    console.error("⚠️ Emails will NOT be sent. Configure EMAIL_USER and EMAIL_PASSWORD in production.");
-    
-    // Fallback: create a dummy transporter that logs instead of sending
-    transporter = {
-      sendMail: async (mailOptions) => {
-        console.log("📧 [EMAIL NOT SENT] To:", mailOptions.to);
-        console.log("📧 [EMAIL NOT SENT] Subject:", mailOptions.subject);
-        return { messageId: 'dummy-id' };
-      }
-    };
-    isInitialized = true;
-  }
+  // Production: Use Gmail SMTP
+  transporter = nodemailer.createTransport({
+    service: process.env.EMAIL_SERVICE || 'gmail',
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASSWORD,
+    },
+  });
+  
+  console.log(`📧 Email service ready (${process.env.EMAIL_USER})`);
+  isInitialized = true;
 };
 
 /**
