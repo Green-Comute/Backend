@@ -2,8 +2,8 @@ import nodemailer from "nodemailer";
 
 /**
  * @fileoverview Email Service
- * @description Provides email sending functionality using Ethereal Email for development.
- * Handles password reset emails and other transactional emails.
+ * @description Provides email sending functionality using Gmail SMTP for production
+ * or Ethereal Email for development.
  * @module services/email.service
  */
 
@@ -12,28 +12,61 @@ let transporter;
 /**
  * Create Email Transporter
  * 
- * @description Initializes Nodemailer transporter with Ethereal Email test account.
- * Ethereal Email is a development/testing service providing fake SMTP server.
+ * @description Initializes Nodemailer transporter with production SMTP or test account.
+ * Uses Gmail SMTP in production (via environment variables) or Ethereal for testing.
  * 
  * @private
  * @async
  * 
- * @note In production, replace with real SMTP service (SendGrid, AWS SES, etc.)
- * @note Ethereal emails are not delivered - use preview URL to view
+ * @note Production requires EMAIL_USER and EMAIL_PASSWORD environment variables
+ * @note For Gmail: use App Password, not regular password
  */
 const createTransporter = async () => {
-  const testAccount = await nodemailer.createTestAccount();
+  // Production: Use real SMTP service
+  if (process.env.EMAIL_USER && process.env.EMAIL_PASSWORD) {
+    transporter = nodemailer.createTransport({
+      service: process.env.EMAIL_SERVICE || 'gmail',
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASSWORD,
+      },
+    });
+    console.log("📧 Production email service ready");
+    return;
+  }
 
-  transporter = nodemailer.createTransport({
-    host: "smtp.ethereal.email",
-    port: 587,
-    auth: {
-      user: testAccount.user,
-      pass: testAccount.pass,
-    },
-  });
+  // Development: Use Ethereal Email with timeout
+  try {
+    const testAccount = await Promise.race([
+      nodemailer.createTestAccount(),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Ethereal timeout')), 5000)
+      )
+    ]);
 
-  console.log("📧 Ethereal Email ready");
+    transporter = nodemailer.createTransport({
+      host: "smtp.ethereal.email",
+      port: 587,
+      auth: {
+        user: testAccount.user,
+        pass: testAccount.pass,
+      },
+    });
+
+    console.log("📧 Ethereal Email ready (development mode)");
+  } catch (error) {
+    console.error("⚠️ Email service initialization failed:", error.message);
+    console.error("⚠️ Emails will NOT be sent. Configure EMAIL_USER and EMAIL_PASSWORD in production.");
+    
+    // Fallback: create a dummy transporter that logs instead of sending
+    transporter = {
+      sendMail: async (mailOptions) => {
+        console.log("📧 [EMAIL NOT SENT] To:", mailOptions.to);
+        console.log("📧 [EMAIL NOT SENT] Subject:", mailOptions.subject);
+        return { messageId: 'dummy-id' };
+      }
+    };
+  }
 };
 
 await createTransporter();
@@ -41,8 +74,7 @@ await createTransporter();
 /**
  * Send Email
  * 
- * @description Sends HTML email using configured transporter. Currently uses Ethereal
- * Email for development - emails not actually delivered but preview URL provided.
+ * @description Sends HTML email using configured transporter.
  * 
  * @async
  * @param {Object} options - Email options
@@ -58,24 +90,27 @@ await createTransporter();
  *   subject: 'Password Reset',
  *   html: '<p>Click <a href="...">here</a> to reset your password</p>'
  * });
- * 
- * @logging Logs preview URL to console for development testing
- * 
- * @production
- * - Replace Ethereal with production SMTP service
- * - Configure real SMTP credentials via environment variables
- * - Consider email templates for consistent styling
- * - Add email queuing for high volume (Bull, BullMQ)
- * - Implement retry logic for failed sends
- * - Track email delivery status
  */
 export const sendEmail = async ({ to, subject, html }) => {
-  const info = await transporter.sendMail({
-    from: '"GreenCommute" <no-reply@greencommute.dev>',
-    to,
-    subject,
-    html,
-  });
+  try {
+    const info = await transporter.sendMail({
+      from: process.env.EMAIL_FROM || '"GreenCommute" <no-reply@greencommute.dev>',
+      to,
+      subject,
+      html,
+    });
 
-  console.log("📨 Preview URL:", nodemailer.getTestMessageUrl(info));
+    // Log preview URL for Ethereal Email
+    if (info.messageId && !process.env.EMAIL_USER) {
+      const previewUrl = nodemailer.getTestMessageUrl(info);
+      if (previewUrl) {
+        console.log("📨 Preview URL:", previewUrl);
+      }
+    } else {
+      console.log("📨 Email sent successfully to:", to);
+    }
+  } catch (error) {
+    console.error("📧 Email sending failed:", error.message);
+    throw new Error("Failed to send email");
+  }
 };
