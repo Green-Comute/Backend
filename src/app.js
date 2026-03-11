@@ -33,9 +33,9 @@ import pointRulesRoutes from "./routes/pointRules.routes.js";
 const app = express();
 
 // Security: Dynamic CORS configuration (Fix #3)
-const allowedOrigins = process.env.FRONTEND_URL
-  ? process.env.FRONTEND_URL.split(',')
-  : ['http://localhost:5173'];
+//const allowedOrigins = process.env.FRONTEND_URL
+//  ? process.env.FRONTEND_URL.split(',')
+//  : ['http://localhost:5173'];
 
 // TEMPORARY: Allow all origins for testing
 app.use(cors({
